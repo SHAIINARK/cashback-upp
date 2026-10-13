@@ -2,6 +2,8 @@
 
 Полный контекст, продуктовые решения, план и промпты: [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). Инструкции помощнику: [AGENTS.md](AGENTS.md). История версий и безопасный возврат: [GIT_GUIDE.md](GIT_GUIDE.md).
 
+Исходники и история: [приватный репозиторий SHAIINARK/cashback-upp](https://github.com/SHAIINARK/cashback-upp). Первая сохранённая версия отмечена меткой `baseline-skeleton`.
+
 Первый скелет Flutter-приложения для Android и iOS. Рабочее название и идентификатор `ru.cashbackguide.balance_app` предварительные; перед публикацией их нужно согласовать.
 
 ## Что работает
