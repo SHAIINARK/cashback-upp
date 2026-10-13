@@ -8,6 +8,9 @@ android {
     namespace = "ru.cashbackguide.balance_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+    buildFeatures {
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -46,4 +49,8 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
 }

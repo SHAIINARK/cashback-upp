@@ -57,3 +57,4 @@ app.*.map.json
 *.mobileprovision
 key.properties
 /private-data/
+/android/.kotlin/

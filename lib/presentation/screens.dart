@@ -5,6 +5,9 @@ import '../domain/models.dart';
 import '../logic/cashback_controller.dart';
 import 'widgets.dart';
 
+export 'ocr_import_screen.dart';
+export 'ocr_review_screen.dart';
+
 const _months = [
   'Январь',
   'Февраль',
@@ -177,159 +180,6 @@ String _bankMark(Bank bank) => switch (bank) {
   Bank.ozon => 'О',
 };
 
-class ImportScreen extends StatelessWidget {
-  const ImportScreen({super.key});
-  @override
-  Widget build(BuildContext context) => PageBody(
-    children: [
-      const PageHeading(
-        eyebrow: 'ОБНОВЛЕНИЕ КАТЕГОРИЙ',
-        title: 'Из банка —\nв один список',
-        subtitle: 'Выберите категории в банке и сделайте скриншоты результата.',
-      ),
-      SurfacePanel(
-        color: AppColors.ink,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(
-              Icons.photo_library_outlined,
-              size: 38,
-              color: AppColors.accent,
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Загрузка скриншотов',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'В этой версии загрузка и распознавание ещё не подключены. Ваши фотографии не запрашиваются и не обрабатываются.',
-              style: TextStyle(color: Color(0xFFD3E1DB), height: 1.5),
-            ),
-            const SizedBox(height: 22),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                disabledBackgroundColor: const Color(0xFF36514B),
-                disabledForegroundColor: const Color(0xFFD3E1DB),
-              ),
-              onPressed: null,
-              child: const Text('Выбрать скриншоты · скоро'),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 24),
-      Text(
-        'Как будет работать импорт',
-        style: Theme.of(context).textTheme.titleLarge,
-      ),
-      const SizedBox(height: 16),
-      const _Step(
-        number: '1',
-        title: 'Добавьте скриншоты',
-        description: 'Можно несколько для одного банка, если категории не помещаются на экран.',
-      ),
-      const _Step(
-        number: '2',
-        title: 'Проверьте результат',
-        description: 'Подтвердите банк, карту, месяц, категории и проценты.',
-      ),
-      const _Step(
-        number: '3',
-        title: 'Сохраните категории',
-        description:
-            'Данные появятся на главном экране после вашего подтверждения.',
-      ),
-      const SizedBox(height: 8),
-      OutlinedButton.icon(
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const ImportReviewScreen()),
-        ),
-        icon: const Icon(Icons.fact_check_outlined),
-        label: const Text('Открыть проверку импорта'),
-      ),
-    ],
-  );
-}
-
-class _Step extends StatelessWidget {
-  const _Step({
-    required this.number,
-    required this.title,
-    required this.description,
-  });
-  final String number;
-  final String title;
-  final String description;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 20),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 17,
-          backgroundColor: const Color(0xFFE0EBDF),
-          child: Text(
-            number,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  color: AppColors.ink,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(description),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class ImportReviewScreen extends StatelessWidget {
-  const ImportReviewScreen({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Проверка импорта')),
-    body: SafeArea(
-      child: PageBody(
-        children: [
-          const EmptyState(
-            icon: Icons.fact_check_outlined,
-            title: 'Пока нечего проверять',
-            description: 'Здесь появятся результаты после подключения загрузки и распознавания скриншотов. Ни одной категории не сохранено.',
-          ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Вернуться к импорту'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
   @override
@@ -346,7 +196,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Text('Кэшбэк рядом', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            const Text('Версия 0.1.0 · первая основа'),
+            const Text('Версия 0.2.0 · проверка распознавания'),
             const Divider(height: 32),
             const _SettingRow(
               icon: Icons.language,
