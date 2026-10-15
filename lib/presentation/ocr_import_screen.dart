@@ -7,12 +7,14 @@ import 'package:path_provider/path_provider.dart';
 import '../app/theme.dart';
 import '../data/native_ocr_engine.dart';
 import '../logic/ocr_import_controller.dart';
+import '../logic/cashback_controller.dart';
 import 'ocr_review_screen.dart';
 import 'widgets.dart';
 
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key, this.picker});
+  const ImportScreen({super.key, this.picker, this.cashbackController});
   final ImagePicker? picker;
+  final CashbackController? cashbackController;
   @override
   State<ImportScreen> createState() => _ImportScreenState();
 }
@@ -107,7 +109,10 @@ class _ImportScreenState extends State<ImportScreen> {
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => ImportReviewScreen(results: _controller.results),
+          builder: (_) => ImportReviewScreen(
+            results: _controller.results,
+            controller: widget.cashbackController,
+          ),
         ),
       );
       await _controller.clear();

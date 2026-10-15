@@ -99,4 +99,48 @@ class CashbackController extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  MonthlyCashbackSet? setFor(String cardId, CashbackMonth period) => repository
+      .monthlySets
+      .where((set) => set.cardId == cardId && set.period == period)
+      .firstOrNull;
+
+  Future<void> saveImportedCategories({
+    required String cardId,
+    required CashbackMonth period,
+    required List<CashbackCategory> incoming,
+    required ImportSaveMode mode,
+  }) async {
+    if (incoming.isEmpty) throw ArgumentError('Нет выбранных категорий.');
+    final existing = setFor(cardId, period);
+    if (mode == ImportSaveMode.create && existing != null) {
+      throw StateError('Набор уже существует.');
+    }
+    if (mode != ImportSaveMode.create && existing == null) {
+      throw StateError('Набор не найден.');
+    }
+    final categories = mode == ImportSaveMode.append
+        ? [...existing!.categories, ...incoming]
+        : incoming;
+    final names = categories
+        .map((item) => item.originalName.trim().toLowerCase())
+        .toList();
+    if (names.toSet().length != names.length) {
+      throw StateError(
+        'Категория с таким названием уже есть у карты в этом месяце.',
+      );
+    }
+    await _writable.saveSet(
+      MonthlyCashbackSet(
+        cardId: cardId,
+        period: period,
+        categories: categories,
+        confirmedAt: DateTime.now(),
+        notes: existing?.notes ?? '',
+      ),
+    );
+    notifyListeners();
+  }
 }
+
+enum ImportSaveMode { create, append, replace }

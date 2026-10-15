@@ -8,11 +8,18 @@ import '../domain/models.dart';
 import '../domain/ocr_models.dart';
 import '../logic/bank_screenshot_parser.dart';
 import '../logic/ocr_import_controller.dart';
+import '../logic/cashback_controller.dart';
+import 'ocr_confirmation_screen.dart';
 import 'widgets.dart';
 
 class ImportReviewScreen extends StatefulWidget {
-  const ImportReviewScreen({super.key, this.results = const []});
+  const ImportReviewScreen({
+    super.key,
+    this.results = const [],
+    this.controller,
+  });
   final List<ScreenshotResult> results;
+  final CashbackController? controller;
   @override
   State<ImportReviewScreen> createState() => _ImportReviewScreenState();
 }
@@ -21,6 +28,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
   int _index = 0;
   final Map<int, Bank> _bankHints = {};
   final Map<int, String> _bankNames = {};
+  final Set<int> _savedIndices = {};
   static const _months = [
     'Январь',
     'Февраль',
@@ -64,7 +72,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     final detectedBank = result.draft?.bank;
     final selectedName = _bankNames[_index];
     final selectedBank = selectedName == null
-        ? _bankHints[_index] ?? detectedBank ?? _fallbackBank(result.path)
+        ? _bankHints[_index] ?? detectedBank
         : Bank.values.where((bank) => bank.label == selectedName).firstOrNull;
     final draft = document == null
         ? null
@@ -110,16 +118,33 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
                 context,
                 draft,
                 document,
-                selectedName ?? selectedBank!.label,
+                selectedName ?? selectedBank?.label ?? 'Выбрать банк',
                 detectedBank == null && selectedName == null,
                 selectedName != null && selectedBank == null,
                 selectedBank,
               ),
             const SizedBox(height: 24),
-            const Text(
-              'Результат пока не сохраняется. После возврата временные копии этих скриншотов будут удалены.',
-            ),
+            if (_savedIndices.contains(_index))
+              const Text(
+                'Выбранные категории этого скриншота сохранены на телефоне.',
+              )
+            else
+              const Text(
+                'Это черновик. Отметьте выбранные категории и подтвердите сохранение. После возврата временные копии скриншотов будут удалены.',
+              ),
             const SizedBox(height: 16),
+            if (document != null && widget.controller != null) ...[
+              FilledButton.icon(
+                onPressed: () => _openConfirmation(result, selectedBank),
+                icon: const Icon(Icons.edit_outlined),
+                label: Text(
+                  _savedIndices.contains(_index)
+                      ? 'Проверить и сохранить снова'
+                      : 'Исправить и сохранить',
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (widget.results.length > 1) ...[
               OutlinedButton.icon(
                 onPressed: _index < widget.results.length - 1
@@ -166,7 +191,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
       ),
       if (bankWasGuessed) ...[
         const SizedBox(height: 8),
-        const Text('Банк не распознан. Проверьте предложенный вариант.'),
+        const Text('Банк не распознан. Выберите его перед сохранением.'),
       ],
       if (unsupportedBank) ...[
         const SizedBox(height: 8),
@@ -242,9 +267,18 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     ];
   }
 
-  Bank _fallbackBank(String path) {
-    final checksum = path.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
-    return Bank.values[checksum % Bank.values.length];
+  Future<void> _openConfirmation(ScreenshotResult result, Bank? bank) async {
+    final index = _index;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => OcrConfirmationScreen(
+          result: result,
+          controller: widget.controller!,
+          initialBank: bank,
+        ),
+      ),
+    );
+    if (saved == true && mounted) setState(() => _savedIndices.add(index));
   }
 
   Future<void> _openBankPicker() async {

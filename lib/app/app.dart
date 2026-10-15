@@ -48,7 +48,7 @@ class _AppShellState extends State<AppShell> {
               onImport: _showImport,
               onManual: _showManual,
             ),
-            const ImportScreen(),
+            ImportScreen(cashbackController: widget.controller),
             const SettingsScreen(),
           ],
         ),
