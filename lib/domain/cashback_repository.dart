@@ -1,7 +1,15 @@
 import 'models.dart';
 
-/// Read boundary; persistence and write operations belong to the next stage.
 abstract interface class CashbackRepository {
   List<BankCard> get cards;
   List<MonthlyCashbackSet> get monthlySets;
+}
+
+abstract interface class WritableCashbackRepository
+    implements CashbackRepository {
+  Future<void> load();
+  Future<void> saveCard(BankCard card);
+  Future<void> deleteCard(String id);
+  Future<void> saveSet(MonthlyCashbackSet set);
+  Future<void> deleteSet(String cardId, CashbackMonth period);
 }

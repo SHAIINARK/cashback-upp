@@ -7,30 +7,32 @@ import 'widgets.dart';
 
 export 'ocr_import_screen.dart';
 export 'ocr_review_screen.dart';
-
-const _months = [
-  'Январь',
-  'Февраль',
-  'Март',
-  'Апрель',
-  'Май',
-  'Июнь',
-  'Июль',
-  'Август',
-  'Сентябрь',
-  'Октябрь',
-  'Ноябрь',
-  'Декабрь',
-];
+export 'manual_entries_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
     super.key,
     required this.controller,
     required this.onImport,
+    required this.onManual,
   });
   final CashbackController controller;
   final VoidCallback onImport;
+  final VoidCallback onManual;
+  static const _monthNames = [
+    'янв.',
+    'фев.',
+    'мар.',
+    'апр.',
+    'май',
+    'июн.',
+    'июл.',
+    'авг.',
+    'сен.',
+    'окт.',
+    'ноя.',
+    'дек.',
+  ];
   @override
   Widget build(BuildContext context) => PageBody(
     children: [
@@ -39,38 +41,35 @@ class HomeScreen extends StatelessWidget {
         title: 'Чем платить\nсегодня?',
         subtitle: 'Категории ваших карт — в одном месте.',
       ),
+      FilledButton.icon(
+        onPressed: onManual,
+        icon: const Icon(Icons.edit_outlined),
+        label: const Text('Мои карты и категории'),
+      ),
+      const SizedBox(height: 16),
       Row(
         children: [
-          IconButton(
-            tooltip: 'Предыдущий месяц',
-            onPressed: () => controller.moveMonth(-1),
-            icon: const Icon(Icons.chevron_left),
-          ),
-          Expanded(
-            child: Text(
-              '${_months[controller.month.month - 1]} ${controller.month.year}',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge,
+          for (final offset in [-1, 0, 1])
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: offset == 1 ? 0 : 8),
+                child: _MonthPill(
+                  label: offset == 0
+                      ? 'Текущий'
+                      : offset < 0
+                      ? 'Предыдущий'
+                      : 'Следующий',
+                  month: controller.anchorMonth.shift(offset),
+                  selected:
+                      controller.month == controller.anchorMonth.shift(offset),
+                  onTap: () => controller.moveMonth(offset),
+                ),
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: 'Следующий месяц',
-            onPressed: () => controller.moveMonth(1),
-            icon: const Icon(Icons.chevron_right),
-          ),
         ],
       ),
-      const SizedBox(height: 20),
-      EmptyState(
-        icon: Icons.wallet_outlined,
-        title: 'Здесь будут ваши категории',
-        description: 'Добавьте выбранный кэшбэк, чтобы видеть проценты по своим картам. Сейчас категории ещё не загружены.',
-        action: FilledButton.icon(
-          onPressed: onImport,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Как добавить категории'),
-        ),
-      ),
+      const SizedBox(height: 22),
+      _HomeCashbackView(controller: controller, onImport: onImport),
       const SizedBox(height: 20),
       SurfacePanel(
         color: const Color(0xFFE9EFE7),
@@ -92,93 +91,252 @@ class HomeScreen extends StatelessWidget {
   );
 }
 
-class CardsScreen extends StatelessWidget {
-  const CardsScreen({super.key, required this.onImport});
-  final VoidCallback onImport;
+class _MonthPill extends StatelessWidget {
+  const _MonthPill({
+    required this.label,
+    required this.month,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final CashbackMonth month;
+  final bool selected;
+  final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => PageBody(
-    children: [
-      const PageHeading(
-        eyebrow: 'ВАШ КОШЕЛЁК',
-        title: 'Мои карты',
-        subtitle: 'Только ваши карты и выбранные категории.',
-      ),
-      EmptyState(
-        icon: Icons.credit_card_rounded,
-        title: 'Карты ещё не добавлены',
-        description: 'После добавления здесь появятся банк, название карты и категории на выбранный месяц.',
-        action: OutlinedButton(
-          onPressed: onImport,
-          child: const Text('О добавлении карт'),
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: selected,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected ? AppColors.primary : const Color(0xFFE2E8E1),
+          ),
         ),
-      ),
-      const SizedBox(height: 28),
-      Text(
-        'Банки первой версии',
-        style: Theme.of(context).textTheme.titleLarge,
-      ),
-      const SizedBox(height: 8),
-      const Text('Это список поддерживаемых банков, а не добавленные карты.'),
-      const SizedBox(height: 16),
-      SurfacePanel(
         child: Column(
           children: [
-            for (final bank in Bank.values) ...[
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _bankColor(bank).withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _bankMark(bank),
-                      style: TextStyle(
-                        color: _bankColor(bank),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      bank.label,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                  ),
-                ],
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: selected ? Colors.white : AppColors.ink,
+                fontSize: 12,
               ),
-              if (bank != Bank.values.last)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(height: 1),
-                ),
-            ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${HomeScreen._monthNames[month.month - 1]} ${month.year}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: selected ? Colors.white : AppColors.ink,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
           ],
         ),
       ),
-    ],
+    ),
   );
 }
 
-Color _bankColor(Bank bank) => switch (bank) {
-  Bank.alfa => const Color(0xFFCF3434),
-  Bank.tbank => const Color(0xFF806700),
-  Bank.sber => const Color(0xFF218447),
-  Bank.vtb => const Color(0xFF2464AD),
-  Bank.ozon => const Color(0xFF195FFF),
-};
-String _bankMark(Bank bank) => switch (bank) {
-  Bank.alfa => 'А',
-  Bank.tbank => 'Т',
-  Bank.sber => 'С',
-  Bank.vtb => 'В',
-  Bank.ozon => 'О',
-};
+class _HomeCashbackView extends StatefulWidget {
+  const _HomeCashbackView({required this.controller, required this.onImport});
+  final CashbackController controller;
+  final VoidCallback onImport;
+  @override
+  State<_HomeCashbackView> createState() => _HomeCashbackViewState();
+}
+
+class _HomeCashbackViewState extends State<_HomeCashbackView> {
+  bool _byCard = false;
+  String? _cardId;
+
+  @override
+  Widget build(BuildContext context) {
+    final sets = widget.controller.selectedSets;
+    final cards = widget.controller.selectedCards;
+    final usable =
+        sets
+            .expand((set) => set.categories)
+            .where((category) => category.rewardType == RewardType.rubles)
+            .toList()
+          ..sort((a, b) => b.percent.compareTo(a.percent));
+    final cardById = {
+      for (final card in widget.controller.cards) card.id: card,
+    };
+    final bankCategories = [
+      for (final set in sets)
+        for (final category in set.categories.where(
+          (item) => item.rewardType == RewardType.rubles,
+        ))
+          (category: category, card: cardById[set.cardId]),
+    ]..sort((a, b) => b.category.percent.compareTo(a.category.percent));
+    final selectedCard = cards.any((card) => card.id == _cardId)
+        ? _cardId
+        : cards.firstOrNull?.id;
+    final cardSet = selectedCard == null
+        ? null
+        : sets.where((set) => set.cardId == selectedCard).firstOrNull;
+    final otherSets = sets
+        .expand((set) => set.categories)
+        .where((category) => category.rewardType != RewardType.rubles)
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(
+              value: false,
+              label: Text('По категориям'),
+              icon: Icon(Icons.category_outlined),
+            ),
+            ButtonSegment(
+              value: true,
+              label: Text('По картам'),
+              icon: Icon(Icons.credit_card_outlined),
+            ),
+          ],
+          selected: {_byCard},
+          onSelectionChanged: (values) =>
+              setState(() => _byCard = values.first),
+        ),
+        const SizedBox(height: 16),
+        if (_byCard && cards.isNotEmpty) ...[
+          DropdownButtonFormField<String>(
+            initialValue: selectedCard,
+            decoration: const InputDecoration(labelText: 'Карта'),
+            items: [
+              for (final card in cards)
+                DropdownMenuItem(
+                  value: card.id,
+                  child: Text('${card.bank.label} · ${card.name}'),
+                ),
+            ],
+            onChanged: (value) => setState(() => _cardId = value),
+          ),
+          const SizedBox(height: 12),
+          if (cardSet == null || cardSet.categories.isEmpty)
+            const _CompactEmpty(message: 'Для этой карты пока нет категорий.')
+          else if (cardSet.categories.any(
+            (item) => item.rewardType == RewardType.rubles,
+          ))
+            _CategoryList(
+              categories: [
+                ...cardSet.categories.where(
+                  (item) => item.rewardType == RewardType.rubles,
+                ),
+              ]..sort((a, b) => b.percent.compareTo(a.percent)),
+            ),
+          if (cardSet != null &&
+              cardSet.categories.any(
+                (item) => item.rewardType != RewardType.rubles,
+              )) ...[
+            const SizedBox(height: 18),
+            Text(
+              'Бонусы и баллы',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            _CategoryList(
+              categories: cardSet.categories
+                  .where((item) => item.rewardType != RewardType.rubles)
+                  .toList(),
+            ),
+          ],
+        ] else if (_byCard || usable.isEmpty) ...[
+          _CompactEmpty(
+            message: _byCard
+                ? 'В этом месяце нет добавленных карт.'
+                : 'Добавьте выбранные категории, чтобы сравнить карты.',
+            action: FilledButton.icon(
+              onPressed: widget.onImport,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: const Text('Добавить скриншоты'),
+            ),
+          ),
+        ] else ...[
+          _CategoryList.entries(entries: bankCategories),
+        ],
+        if (otherSets.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text(
+            'Бонусы и баллы',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          _CategoryList(categories: otherSets),
+        ],
+      ],
+    );
+  }
+}
+
+class _CategoryList extends StatelessWidget {
+  const _CategoryList({required this.categories}) : entries = null;
+  const _CategoryList.entries({required this.entries}) : categories = null;
+  final List<CashbackCategory>? categories;
+  final List<({CashbackCategory category, BankCard? card})>? entries;
+  @override
+  Widget build(BuildContext context) {
+    final rows =
+        entries ??
+        [for (final category in categories!) (category: category, card: null)];
+    return SurfacePanel(
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(rows[i].category.originalName),
+                      if (rows[i].card != null)
+                        Text(
+                          '${rows[i].card!.bank.label} · ${rows[i].card!.name}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${rows[i].category.isUpTo ? 'до ' : ''}${rows[i].category.percent.toStringAsFixed(rows[i].category.percent % 1 == 0 ? 0 : 1)}% · ${rows[i].category.rewardType.label}',
+                ),
+              ],
+            ),
+            if (i != rows.length - 1) const Divider(height: 22),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactEmpty extends StatelessWidget {
+  const _CompactEmpty({required this.message, this.action});
+  final String message;
+  final Widget? action;
+  @override
+  Widget build(BuildContext context) => SurfacePanel(
+    child: Column(
+      children: [
+        Text(message, textAlign: TextAlign.center),
+        if (action != null) ...[const SizedBox(height: 16), action!],
+      ],
+    ),
+  );
+}
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -196,7 +354,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Text('Кэшбэк рядом', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            const Text('Версия 0.2.0 · проверка распознавания'),
+            const Text('Версия 0.3.0 · локальное хранение'),
             const Divider(height: 32),
             const _SettingRow(
               icon: Icons.language,

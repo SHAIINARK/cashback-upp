@@ -138,8 +138,8 @@ class _ImportScreenState extends State<ImportScreen> {
       children: [
         const PageHeading(
           eyebrow: 'ОБНОВЛЕНИЕ КАТЕГОРИЙ',
-          title: 'Из банка —\nв один список',
-          subtitle: 'Выберите скриншоты выбранного кэшбэка. Обработка происходит на телефоне.',
+          title: 'Добавить категории',
+          subtitle: 'Выберите скриншоты из банковских приложений.',
         ),
         SurfacePanel(
           color: AppColors.ink,
@@ -149,11 +149,11 @@ class _ImportScreenState extends State<ImportScreen> {
               const Icon(
                 Icons.photo_library_outlined,
                 color: AppColors.accent,
-                size: 38,
+                size: 48,
               ),
               const SizedBox(height: 18),
               const Text(
-                'Проверим ваши категории',
+                'Скриншоты кэшбэка',
                 style: TextStyle(
                   fontSize: 22,
                   color: Colors.white,
@@ -162,10 +162,14 @@ class _ImportScreenState extends State<ImportScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'До 10 скриншотов за один раз. Можно несколько для одного банка. Фотографии не отправляются на сервер.',
-                style: TextStyle(color: Color(0xFFD3E1DB), height: 1.5),
+                'До 10 изображений. Обработка на телефоне.',
+                style: TextStyle(
+                  color: Color(0xFFD3E1DB),
+                  height: 1.35,
+                  fontSize: 14,
+                ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 26),
               if (_controller.busy) ...[
                 LinearProgressIndicator(
                   value: _controller.total > 0
@@ -186,6 +190,14 @@ class _ImportScreenState extends State<ImportScreen> {
                   foregroundColor: AppColors.ink,
                   disabledForegroundColor: const Color(0xFFD3E1DB),
                   disabledBackgroundColor: const Color(0xFF36514B),
+                  minimumSize: const Size.fromHeight(60),
+                  textStyle: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
                 ),
                 icon: const Icon(Icons.add_photo_alternate_outlined),
                 label: Text(
@@ -193,12 +205,6 @@ class _ImportScreenState extends State<ImportScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        const SurfacePanel(
-          child: Text(
-            'Это первая проверка распознавания. Результат — черновик: проверьте названия, проценты и выбранные строки. Сохранение категорий появится на следующем этапе.',
           ),
         ),
         const SizedBox(height: 20),

@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../app/theme.dart';
 import '../domain/models.dart';
 import '../domain/ocr_models.dart';
 import '../logic/bank_screenshot_parser.dart';
@@ -18,6 +20,7 @@ class ImportReviewScreen extends StatefulWidget {
 class _ImportReviewScreenState extends State<ImportReviewScreen> {
   int _index = 0;
   final Map<int, Bank> _bankHints = {};
+  final Map<int, String> _bankNames = {};
   static const _months = [
     'Январь',
     'Февраль',
@@ -58,36 +61,29 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     }
     final result = widget.results[_index];
     final document = result.document;
+    final detectedBank = result.draft?.bank;
+    final selectedName = _bankNames[_index];
+    final selectedBank = selectedName == null
+        ? _bankHints[_index] ?? detectedBank ?? _fallbackBank(result.path)
+        : Bank.values.where((bank) => bank.label == selectedName).firstOrNull;
     final draft = document == null
         ? null
-        : BankScreenshotParser().parse(document, bankHint: _bankHints[_index]);
+        : BankScreenshotParser().parse(document, bankHint: selectedBank);
     return Scaffold(
       appBar: AppBar(title: const Text('Проверка импорта')),
       body: SafeArea(
         child: PageBody(
           children: [
-            Row(
-              children: [
-                IconButton(
-                  tooltip: 'Предыдущий скриншот',
-                  onPressed: _index > 0 ? () => setState(() => _index--) : null,
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                Expanded(
-                  child: Text(
-                    'Скриншот ${_index + 1} из ${widget.results.length}',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Следующий скриншот',
-                  onPressed: _index < widget.results.length - 1
-                      ? () => setState(() => _index++)
-                      : null,
-                  icon: const Icon(Icons.chevron_right),
-                ),
-              ],
+            Text(
+              'Скриншот ${_index + 1} из ${widget.results.length}',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 10),
+            _ScreenshotNavigation(
+              count: widget.results.length,
+              selected: _index,
+              onSelect: (index) => setState(() => _index = index),
             ),
             const SizedBox(height: 16),
             ExpansionTile(
@@ -110,12 +106,30 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
                 description: result.error!,
               ),
             if (draft != null && document != null)
-              ..._draftWidgets(context, draft, document),
+              ..._draftWidgets(
+                context,
+                draft,
+                document,
+                selectedName ?? selectedBank!.label,
+                detectedBank == null && selectedName == null,
+                selectedName != null && selectedBank == null,
+                selectedBank,
+              ),
             const SizedBox(height: 24),
             const Text(
               'Результат пока не сохраняется. После возврата временные копии этих скриншотов будут удалены.',
             ),
             const SizedBox(height: 16),
+            if (widget.results.length > 1) ...[
+              OutlinedButton.icon(
+                onPressed: _index < widget.results.length - 1
+                    ? () => setState(() => _index++)
+                    : null,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('Далее'),
+              ),
+              const SizedBox(height: 8),
+            ],
             FilledButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Завершить проверку'),
@@ -130,93 +144,298 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     BuildContext context,
     ParsedScreenshot draft,
     OcrDocument document,
-  ) => [
-    Text(
-      'Обработка: ${(document.elapsedMs / 1000).toStringAsFixed(1)} с · ${document.lines.length} строк',
-      style: Theme.of(context).textTheme.bodyMedium,
-    ),
-    const SizedBox(height: 16),
-    DropdownButtonFormField<Bank>(
-      key: ValueKey('bank-$_index-${draft.bank}'),
-      initialValue: draft.bank,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Банк — подтвердите выбор',
-        border: OutlineInputBorder(),
+    String bankLabel,
+    bool bankWasGuessed,
+    bool unsupportedBank,
+    Bank? selectedBank,
+  ) {
+    return [
+      Text(
+        'Обработка: ${(document.elapsedMs / 1000).toStringAsFixed(1)} с · ${document.lines.length} строк',
+        style: Theme.of(context).textTheme.bodyMedium,
       ),
-      items: Bank.values
-          .map((bank) => DropdownMenuItem(value: bank, child: Text(bank.label)))
-          .toList(),
-      onChanged: (bank) {
-        if (bank != null) setState(() => _bankHints[_index] = bank);
-      },
-    ),
-    const SizedBox(height: 16),
-    Text(
-      'Месяц: ${draft.month == null ? 'не определён' : _months[draft.month! - 1]} · Год: ${draft.year ?? 'не указан'}',
-      style: Theme.of(context).textTheme.titleMedium,
-    ),
-    const SizedBox(height: 16),
-    for (final warning in draft.warnings)
-      Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.info_outline, size: 18),
-            const SizedBox(width: 8),
-            Expanded(child: Text(warning)),
-          ],
+      const SizedBox(height: 16),
+      OutlinedButton.icon(
+        onPressed: _openBankPicker,
+        style: OutlinedButton.styleFrom(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
+        icon: const Icon(Icons.account_balance_outlined),
+        label: Text(bankLabel, overflow: TextOverflow.ellipsis),
       ),
-    const SizedBox(height: 12),
-    Text(
-      'Найденные категории: ${draft.categories.length}',
-      style: Theme.of(context).textTheme.titleLarge,
-    ),
-    const SizedBox(height: 12),
-    for (final category in draft.categories)
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: SurfacePanel(
-          child: Column(
+      if (bankWasGuessed) ...[
+        const SizedBox(height: 8),
+        const Text('Банк не распознан. Проверьте предложенный вариант.'),
+      ],
+      if (unsupportedBank) ...[
+        const SizedBox(height: 8),
+        const Text(
+          'Для этого банка нет отдельного распознавания. Проверьте результат вручную.',
+        ),
+      ],
+      const SizedBox(height: 16),
+      Text(
+        'Месяц: ${draft.month == null ? 'не определён' : _months[draft.month! - 1]} · Год: ${draft.year ?? 'не указан'}',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 16),
+      for (final warning in draft.warnings)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Icon(Icons.info_outline, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(warning)),
+            ],
+          ),
+        ),
+      const SizedBox(height: 12),
+      Text(
+        'Найденные категории: ${draft.categories.length}',
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: 12),
+      for (final category in draft.categories)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SurfacePanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  category.originalName,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${category.isUpTo ? 'до ' : ''}${_rate(category.percent)}%${selectedBank == Bank.sber ? ' бонусами Спасибо' : ''}',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                if (category.selectionUnknown) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Не подтверждено, что эта строка выбрана в банке.',
+                  ),
+                ],
+                if (category.notes.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(category.notes),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ExpansionTile(
+        title: const Text('Весь распознанный текст'),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SelectableText(
+              document.lines.map((line) => line.text).join('\n'),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  Bank _fallbackBank(String path) {
+    final checksum = path.codeUnits.fold<int>(0, (sum, unit) => sum + unit);
+    return Bank.values[checksum % Bank.values.length];
+  }
+
+  Future<void> _openBankPicker() async {
+    final index = _index;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => const _BankPicker(),
+    );
+    if (!mounted || selected == null) return;
+    final bank = Bank.values
+        .where(
+          (item) => item.label.toLowerCase() == selected.trim().toLowerCase(),
+        )
+        .firstOrNull;
+    setState(() {
+      _bankNames[index] = bank?.label ?? selected.trim();
+      if (bank == null) {
+        _bankHints.remove(index);
+      } else {
+        _bankHints[index] = bank;
+      }
+    });
+  }
+
+  String _rate(double value) => value == value.truncateToDouble()
+      ? value.toInt().toString()
+      : value.toString().replaceAll('.', ',');
+}
+
+class _BankPicker extends StatefulWidget {
+  const _BankPicker();
+
+  @override
+  State<_BankPicker> createState() => _BankPickerState();
+}
+
+class _BankPickerState extends State<_BankPicker> {
+  final _controller = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    final availableHeight = MediaQuery.sizeOf(context).height - inset - 24;
+    final height = math.min(460.0, math.max(200.0, availableHeight));
+    final matches = Bank.values.where(
+      (bank) => bank.label.toLowerCase().contains(_query.trim().toLowerCase()),
+    );
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: inset),
+      child: SizedBox(
+        height: height,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Text(
-                category.originalName,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${category.isUpTo ? 'до ' : ''}${_rate(category.percent)}%${draft.bank == Bank.sber ? ' бонусами Спасибо' : ''}',
+                'Выберите банк',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
-              if (category.selectionUnknown) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _controller,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  hintText: 'Название банка',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) => setState(() => _query = value),
+                onSubmitted: (value) {
+                  if (value.trim().isNotEmpty) {
+                    Navigator.of(context).pop(value.trim());
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final bank in matches)
+                      ListTile(
+                        title: Text(bank.label),
+                        onTap: () => Navigator.of(context).pop(bank.label),
+                      ),
+                    if (matches.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'В списке нет такого банка. Можно вписать его название.',
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (_query.trim().isNotEmpty) ...[
                 const SizedBox(height: 8),
-                const Text('Не подтверждено, что эта строка выбрана в банке.'),
-              ],
-              if (category.notes.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(category.notes),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(_query.trim()),
+                  child: const Text('Использовать введённое название'),
+                ),
               ],
             ],
           ),
         ),
       ),
-    ExpansionTile(
-      title: const Text('Весь распознанный текст'),
-      children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SelectableText(
-            document.lines.map((line) => line.text).join('\n'),
-          ),
-        ),
-      ],
-    ),
-  ];
+    );
+  }
+}
 
-  String _rate(double value) => value == value.truncateToDouble()
-      ? value.toInt().toString()
-      : value.toString().replaceAll('.', ',');
+class _ScreenshotNavigation extends StatelessWidget {
+  const _ScreenshotNavigation({
+    required this.count,
+    required this.selected,
+    required this.onSelect,
+  });
+  final int count;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      IconButton.filled(
+        tooltip: 'Предыдущий скриншот',
+        onPressed: selected > 0 ? () => onSelect(selected - 1) : null,
+        style: IconButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppColors.primary.withValues(alpha: .35),
+          disabledForegroundColor: Colors.white,
+        ),
+        icon: const Icon(Icons.chevron_left),
+      ),
+      const SizedBox(width: 4),
+      Expanded(
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 5,
+          runSpacing: 4,
+          children: [
+            for (var index = 0; index < count; index++)
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: OutlinedButton(
+                  onPressed: () => onSelect(index),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(
+                      color: AppColors.primary,
+                      width: selected == index ? 2 : 1,
+                    ),
+                    backgroundColor: selected == index
+                        ? AppColors.primary.withValues(alpha: .10)
+                        : Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Text('${index + 1}'),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(width: 4),
+      IconButton.filled(
+        tooltip: 'Следующий скриншот',
+        onPressed: selected < count - 1 ? () => onSelect(selected + 1) : null,
+        style: IconButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppColors.primary.withValues(alpha: .35),
+          disabledForegroundColor: Colors.white,
+        ),
+        icon: const Icon(Icons.chevron_right),
+      ),
+    ],
+  );
 }

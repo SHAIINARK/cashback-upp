@@ -29,7 +29,12 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
-  void _showImport() => setState(() => _index = 2);
+  void _showImport() => setState(() => _index = 1);
+  void _showManual() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ManualEntriesScreen(controller: widget.controller),
+    ),
+  );
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.controller,
@@ -38,8 +43,11 @@ class _AppShellState extends State<AppShell> {
         child: IndexedStack(
           index: _index,
           children: [
-            HomeScreen(controller: widget.controller, onImport: _showImport),
-            CardsScreen(onImport: _showImport),
+            HomeScreen(
+              controller: widget.controller,
+              onImport: _showImport,
+              onManual: _showManual,
+            ),
             const ImportScreen(),
             const SettingsScreen(),
           ],
@@ -53,11 +61,6 @@ class _AppShellState extends State<AppShell> {
             icon: Icon(Icons.grid_view_outlined),
             selectedIcon: Icon(Icons.grid_view_rounded),
             label: 'Главная',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.credit_card_outlined),
-            selectedIcon: Icon(Icons.credit_card),
-            label: 'Мои карты',
           ),
           NavigationDestination(
             icon: Icon(Icons.add_photo_alternate_outlined),
