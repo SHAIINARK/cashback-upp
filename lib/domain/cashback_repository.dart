@@ -11,5 +11,9 @@ abstract interface class WritableCashbackRepository
   Future<void> saveCard(BankCard card);
   Future<void> deleteCard(String id);
   Future<void> saveSet(MonthlyCashbackSet set);
+  Future<void> saveImportBatch({
+    required List<BankCard> newCards,
+    required List<MonthlyCashbackSet> sets,
+  });
   Future<void> deleteSet(String cardId, CashbackMonth period);
 }

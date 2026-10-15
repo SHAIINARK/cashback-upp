@@ -50,7 +50,6 @@ class BankScreenshotParser {
     if (month == null) {
       warnings.add('Месяц не определён: выберите его вручную.');
     }
-    if (year == null) warnings.add('Год не указан: подтвердите его вручную.');
     if (bank == null) warnings.add('Банк не определён: выберите его вручную.');
     final choiceScreen =
         text.contains('выбираете') ||

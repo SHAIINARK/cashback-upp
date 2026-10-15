@@ -1,5 +1,6 @@
 import '../domain/models.dart';
 import '../domain/ocr_models.dart';
+import 'import_period.dart';
 
 /// Ephemeral user-reviewed OCR data. It is never stored as a confirmed set.
 class ReviewRow {
@@ -33,7 +34,9 @@ class ImportReviewDraft {
   ImportReviewDraft(ParsedScreenshot parsed, {Bank? bank})
     : bank = bank ?? parsed.bank,
       month = parsed.month,
-      year = parsed.year,
+      year = parsed.month == null
+          ? parsed.year
+          : importPeriod(parsed.month!, year: parsed.year).year,
       rows = [
         for (final item in parsed.categories)
           ReviewRow(
@@ -44,6 +47,7 @@ class ImportReviewDraft {
                 : RewardType.rubles,
             isUpTo: item.isUpTo,
             notes: item.notes,
+            selected: !item.selectionUnknown,
           ),
       ];
 
@@ -58,17 +62,19 @@ class ImportReviewDraft {
 
   String? validate(List<BankCard> cards) {
     if (bank == null) return 'Выберите банк из списка.';
-    if (cardId == null ||
-        !cards.any((card) => card.id == cardId && card.bank == bank)) {
+    final matchingCards = cards.where((card) => card.bank == bank).toList();
+    if (matchingCards.length > 1 && cardId == null ||
+        cardId != null && !matchingCards.any((card) => card.id == cardId)) {
       return 'Выберите карту этого банка.';
     }
+    if (month != null) year ??= importPeriod(month!).year;
     if (month == null ||
         month! < 1 ||
         month! > 12 ||
         year == null ||
         year! < 2000 ||
         year! > 9999) {
-      return 'Укажите месяц и год, которые действовали на скриншоте.';
+      return 'Укажите месяц, который действует на скриншоте.';
     }
     if (selectedRows.isEmpty) {
       return 'Отметьте хотя бы одну действительно выбранную категорию.';

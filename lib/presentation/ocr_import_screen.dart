@@ -12,9 +12,15 @@ import 'ocr_review_screen.dart';
 import 'widgets.dart';
 
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key, this.picker, this.cashbackController});
+  const ImportScreen({
+    super.key,
+    this.picker,
+    this.cashbackController,
+    this.onCompleted,
+  });
   final ImagePicker? picker;
   final CashbackController? cashbackController;
+  final VoidCallback? onCompleted;
   @override
   State<ImportScreen> createState() => _ImportScreenState();
 }
@@ -107,8 +113,8 @@ class _ImportScreenState extends State<ImportScreen> {
       }
       await _controller.import(paths, directory);
       if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
+      final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
           builder: (_) => ImportReviewScreen(
             results: _controller.results,
             controller: widget.cashbackController,
@@ -116,6 +122,7 @@ class _ImportScreenState extends State<ImportScreen> {
         ),
       );
       await _controller.clear();
+      if (saved == true && mounted) widget.onCompleted?.call();
     } catch (_) {
       if (directory != null && await directory.exists()) {
         await directory.delete(recursive: true);

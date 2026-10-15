@@ -6,8 +6,8 @@ import '../domain/models.dart';
 import '../logic/bank_screenshot_parser.dart';
 import '../logic/cashback_controller.dart';
 import '../logic/import_review_draft.dart';
+import '../logic/import_period.dart';
 import '../logic/ocr_import_controller.dart';
-import 'manual_entries_screen.dart';
 import 'widgets.dart';
 
 class OcrConfirmationScreen extends StatefulWidget {
@@ -16,10 +16,14 @@ class OcrConfirmationScreen extends StatefulWidget {
     required this.result,
     required this.controller,
     this.initialBank,
+    this.initialMonth,
+    this.initialCardId,
   });
   final ScreenshotResult result;
   final CashbackController controller;
   final Bank? initialBank;
+  final int? initialMonth;
+  final String? initialCardId;
 
   @override
   State<OcrConfirmationScreen> createState() => _OcrConfirmationScreenState();
@@ -27,7 +31,6 @@ class OcrConfirmationScreen extends StatefulWidget {
 
 class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
   late ImportReviewDraft _draft;
-  late final TextEditingController _year;
   bool _saving = false;
 
   @override
@@ -40,13 +43,11 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
             bankHint: widget.initialBank,
           );
     _draft = ImportReviewDraft(parsed, bank: widget.initialBank);
-    _year = TextEditingController(text: _draft.year?.toString() ?? '');
-  }
-
-  @override
-  void dispose() {
-    _year.dispose();
-    super.dispose();
+    if (widget.initialMonth != null) {
+      _draft.month = widget.initialMonth;
+      _draft.year = importPeriod(widget.initialMonth!).year;
+    }
+    _draft.cardId = widget.initialCardId;
   }
 
   Future<void> _changeBank(Bank bank) async {
@@ -78,7 +79,8 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
         : BankScreenshotParser().parse(widget.result.document!, bankHint: bank);
     setState(() {
       _draft = ImportReviewDraft(parsed, bank: bank);
-      _year.text = _draft.year?.toString() ?? '';
+      _draft.month = widget.initialMonth ?? _draft.month;
+      if (_draft.month != null) _draft.year = importPeriod(_draft.month!).year;
     });
   }
 
@@ -111,7 +113,6 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
 
   Future<void> _save() async {
     if (_saving) return;
-    _draft.year = int.tryParse(_year.text.trim());
     final error = _draft.validate(widget.controller.cards);
     if (error != null) {
       ScaffoldMessenger.of(context)
@@ -119,14 +120,19 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
       return;
     }
     final period = CashbackMonth(_draft.year!, _draft.month!);
-    final card = widget.controller.cards.firstWhere(
-      (item) => item.id == _draft.cardId,
-    );
+    final matchingCards = widget.controller.cards
+        .where((item) => item.bank == _draft.bank)
+        .toList();
+    final card = _draft.cardId == null
+        ? matchingCards.firstOrNull
+        : matchingCards.where((item) => item.id == _draft.cardId).firstOrNull;
     final incoming = [
       for (final row in _draft.selectedRows)
         row.toCategory(widget.controller.newId()),
     ];
-    final existing = widget.controller.setFor(_draft.cardId!, period);
+    final existing = card == null
+        ? null
+        : widget.controller.setFor(card.id, period);
     final existingNames =
         existing?.categories
             .map((item) => item.originalName.trim().toLowerCase())
@@ -147,7 +153,7 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${card.bank.label} · ${card.name} · ${period.month.toString().padLeft(2, '0')}.${period.year}',
+                '${_draft.bank!.label}${matchingCards.length > 1 ? ' · ${card?.name ?? ''}' : ''} · месяц ${period.month}',
               ),
               const SizedBox(height: 10),
               Text('Новые выбранные строки: ${incoming.length}'),
@@ -193,7 +199,8 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
     setState(() => _saving = true);
     try {
       await widget.controller.saveImportedCategories(
-        cardId: _draft.cardId!,
+        cardId: _draft.cardId,
+        bank: _draft.bank!,
         period: period,
         incoming: incoming,
         mode: mode,
@@ -225,7 +232,7 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
         child: PageBody(
           children: [
             const Text(
-              'Отметьте только категории, которые вы выбрали в банке. Распознавание не определяет факт выбора.',
+              'Проверьте найденные категории. Если банк показывает и предложения, отметьте только уже выбранные.',
             ),
             ExpansionTile(
               title: const Text('Посмотреть скриншот'),
@@ -258,10 +265,8 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
                     },
             ),
             const SizedBox(height: 12),
-            if (_draft.bank != null) ...[
-              const Text(
-                'Выберите карту, к которой относятся категории. Достаточно её названия — реквизиты не нужны.',
-              ),
+            if (_draft.bank != null && cards.length > 1) ...[
+              const Text('У вас несколько карт этого банка. Выберите нужную.'),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 key: ValueKey('card-${_draft.bank}-${_draft.cardId}'),
@@ -280,60 +285,27 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
                     ? null
                     : (value) => setState(() => _draft.cardId = value),
               ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _saving
-                    ? null
-                    : () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => ManualEntriesScreen(
-                              controller: widget.controller,
-                            ),
-                          ),
-                        );
-                        if (mounted) setState(() {});
-                      },
-                icon: const Icon(Icons.add),
-                label: Text(
-                  cards.isEmpty
-                      ? 'Добавить карту этого банка'
-                      : 'Управление картами',
-                ),
-              ),
             ],
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    key: ValueKey('month-${_draft.month}'),
-                    initialValue: _draft.month,
-                    decoration: const InputDecoration(
-                      labelText: 'Месяц',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      for (var month = 1; month <= 12; month++)
-                        DropdownMenuItem(value: month, child: Text('$month')),
-                    ],
-                    onChanged: _saving
-                        ? null
-                        : (value) => setState(() => _draft.month = value),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _year,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Год',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
+            DropdownButtonFormField<int>(
+              key: ValueKey('month-${_draft.month}'),
+              initialValue: _draft.month,
+              decoration: const InputDecoration(
+                labelText: 'Месяц',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                for (var month = 1; month <= 12; month++)
+                  DropdownMenuItem(value: month, child: Text('$month')),
               ],
+              onChanged: _saving
+                  ? null
+                  : (value) => setState(() {
+                      _draft.month = value;
+                      _draft.year = value == null
+                          ? null
+                          : importPeriod(value).year;
+                    }),
             ),
             const SizedBox(height: 20),
             Text(

@@ -6,7 +6,6 @@ import 'package:balance_app/domain/models.dart';
 import 'package:balance_app/logic/cashback_controller.dart';
 import 'package:balance_app/presentation/ocr_import_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
@@ -45,7 +44,7 @@ Future<void> _waitFor(WidgetTester tester, Finder finder) async {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Real OCR draft is saved only after explicit review', (
+  testWidgets('Real OCR draft is saved with one tap and no card setup', (
     tester,
   ) async {
     expect(await File(_fixture).exists(), isTrue);
@@ -55,14 +54,6 @@ void main() {
     });
     final repository = LocalCashbackRepository(directory: directory);
     await repository.load();
-    await repository.saveCard(
-      BankCard(
-        id: 'qa-ozon',
-        bank: Bank.ozon,
-        name: 'Тестовая карта',
-        rewardType: RewardType.rubles,
-      ),
-    );
     final controller = CashbackController(repository);
     addTearDown(controller.dispose);
     await tester.pumpWidget(
@@ -86,42 +77,18 @@ void main() {
     await tester.ensureVisible(pick);
     await tester.pumpAndSettle();
     await tester.tap(pick);
-    await _waitFor(tester, find.text('Исправить и сохранить'));
+    await _waitFor(tester, find.text('Завершить проверку'));
     expect(repository.monthlySets, isEmpty);
-    final review = find.text('Исправить и сохранить');
+    final review = find.text('Завершить проверку');
     await tester.ensureVisible(review);
     await tester.pumpAndSettle();
     await tester.tap(review);
-    await _waitFor(tester, find.text('Подтвердить категории'));
-    expect(find.text('Категории · отмечено 0'), findsOneWidget);
-    expect(repository.monthlySets, isEmpty);
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Тестовая карта').last);
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(CheckboxListTile).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(CheckboxListTile).first);
-    await tester.pump();
-    expect(find.text('Категории · отмечено 1'), findsOneWidget);
-    expect(repository.monthlySets, isEmpty);
-    await tester.enterText(find.byType(TextField).first, '2026');
-    await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-    await tester.pumpAndSettle();
-    final save = find.text('Проверить и сохранить');
-    await tester.ensureVisible(save);
-    await tester.pumpAndSettle();
-    await tester.tap(save);
-    await tester.pumpAndSettle();
-    expect(find.text('Сохранить категории?'), findsOneWidget);
-    expect(repository.monthlySets, isEmpty);
-    await tester.tap(find.text('Сохранить').last);
-    await tester.pumpAndSettle();
-    expect(repository.monthlySets.single.categories, hasLength(1));
+    await _waitFor(tester, find.text('Выбрать скриншоты'));
+    expect(repository.monthlySets.single.categories, isNotEmpty);
     expect(repository.monthlySets.single.period, CashbackMonth(2026, 10));
     final reloaded = LocalCashbackRepository(directory: directory);
     await reloaded.load();
-    expect(reloaded.monthlySets.single.categories, hasLength(1));
+    expect(reloaded.monthlySets.single.categories, isNotEmpty);
     expect(reloaded.cards.single.bank, Bank.ozon);
   });
 }

@@ -30,6 +30,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   void _showImport() => setState(() => _index = 1);
+  void _showHome() => setState(() => _index = 0);
   void _showManual() => Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => ManualEntriesScreen(controller: widget.controller),
@@ -48,7 +49,10 @@ class _AppShellState extends State<AppShell> {
               onImport: _showImport,
               onManual: _showManual,
             ),
-            ImportScreen(cashbackController: widget.controller),
+            ImportScreen(
+              cashbackController: widget.controller,
+              onCompleted: _showHome,
+            ),
             const SettingsScreen(),
           ],
         ),

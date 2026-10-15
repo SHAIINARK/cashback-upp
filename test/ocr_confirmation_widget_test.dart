@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('OCR preview is saved only after marking and confirming', (
+  testWidgets('Clear OCR rows are preselected, saved after confirmation', (
     tester,
   ) async {
     final repository = _MemoryRepository();
@@ -41,23 +41,8 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Категории · отмечено 0'), findsOneWidget);
+    expect(find.text('Категории · отмечено 1'), findsOneWidget);
     expect(repository.monthlySets, isEmpty);
-    await tester.enterText(find.byType(TextField).first, '2026');
-    tester.testTextInput.hide();
-    await tester.ensureVisible(find.text('Проверить и сохранить'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Проверить и сохранить'));
-    await tester.pump(const Duration(seconds: 5));
-    await tester.pumpAndSettle();
-    expect(repository.monthlySets, isEmpty);
-    await tester.tap(find.byType(CheckboxListTile));
-    await tester.pump();
-    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Основная').last);
-    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Проверить и сохранить'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Проверить и сохранить'));
@@ -91,6 +76,17 @@ class _MemoryRepository implements WritableCashbackRepository {
       (item) => item.cardId == set.cardId && item.period == set.period,
     );
     monthlySets.add(set);
+  }
+
+  @override
+  Future<void> saveImportBatch({
+    required List<BankCard> newCards,
+    required List<MonthlyCashbackSet> sets,
+  }) async {
+    cards.addAll(newCards);
+    for (final set in sets) {
+      await saveSet(set);
+    }
   }
 
   @override

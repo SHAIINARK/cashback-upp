@@ -130,7 +130,7 @@ class _MonthPill extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '${HomeScreen._monthNames[month.month - 1]} ${month.year}',
+              HomeScreen._monthNames[month.month - 1],
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: selected ? Colors.white : AppColors.ink,
@@ -217,7 +217,9 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
               for (final card in cards)
                 DropdownMenuItem(
                   value: card.id,
-                  child: Text('${card.bank.label} · ${card.name}'),
+                  child: Text(
+                    '${card.bank.label}${widget.controller.cards.where((item) => item.bank == card.bank).length > 1 || !card.id.startsWith('auto-') ? ' · ${card.name}' : ''}',
+                  ),
                 ),
             ],
             onChanged: (value) => setState(() => _cardId = value),
@@ -263,7 +265,10 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
             ),
           ),
         ] else ...[
-          _CategoryList.entries(entries: bankCategories),
+          _CategoryList.entries(
+            entries: bankCategories,
+            cards: widget.controller.cards,
+          ),
         ],
         if (otherSets.isNotEmpty) ...[
           const SizedBox(height: 18),
@@ -280,10 +285,14 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
 }
 
 class _CategoryList extends StatelessWidget {
-  const _CategoryList({required this.categories}) : entries = null;
-  const _CategoryList.entries({required this.entries}) : categories = null;
+  const _CategoryList({required this.categories})
+    : entries = null,
+      cards = const [];
+  const _CategoryList.entries({required this.entries, required this.cards})
+    : categories = null;
   final List<CashbackCategory>? categories;
   final List<({CashbackCategory category, BankCard? card})>? entries;
+  final List<BankCard> cards;
   @override
   Widget build(BuildContext context) {
     final rows =
@@ -303,7 +312,7 @@ class _CategoryList extends StatelessWidget {
                       Text(rows[i].category.originalName),
                       if (rows[i].card != null)
                         Text(
-                          '${rows[i].card!.bank.label} · ${rows[i].card!.name}',
+                          '${rows[i].card!.bank.label}${cards.where((card) => card.bank == rows[i].card!.bank).length > 1 || !rows[i].card!.id.startsWith('auto-') ? ' · ${rows[i].card!.name}' : ''}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                     ],
@@ -354,7 +363,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Text('Кэшбэк рядом', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            const Text('Версия 0.4.0 · подтверждение импорта'),
+            const Text('Версия 0.5.0 · быстрый импорт'),
             const Divider(height: 32),
             const _SettingRow(
               icon: Icons.language,

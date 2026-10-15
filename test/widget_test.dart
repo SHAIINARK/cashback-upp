@@ -22,7 +22,7 @@ void main() {
     );
     await tester.tap(find.text('Следующий'));
     await tester.pump();
-    expect(find.text('янв. 2027'), findsOneWidget);
+    expect(find.text('янв.'), findsOneWidget);
     await tester.ensureVisible(find.text('Мои карты и категории'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Мои карты и категории'));
@@ -92,8 +92,8 @@ void main() {
     expect(find.text('Альфа · Основная'), findsOneWidget);
     await tester.tap(find.text('Добавить категорию'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).at(1), 'Аптеки');
-    await tester.enterText(find.byType(TextFormField).at(2), '5');
+    await tester.enterText(find.byType(TextFormField).first, 'Аптеки');
+    await tester.enterText(find.byType(TextFormField).at(1), '5');
     await tester.tap(find.text('Сохранить').last);
     await tester.pumpAndSettle();
     expect(find.text('Аптеки'), findsOneWidget);
@@ -131,6 +131,17 @@ class _MemoryRepository implements WritableCashbackRepository {
       (item) => item.cardId == set.cardId && item.period == set.period,
     );
     _sets.add(set);
+  }
+
+  @override
+  Future<void> saveImportBatch({
+    required List<BankCard> newCards,
+    required List<MonthlyCashbackSet> sets,
+  }) async {
+    _cards.addAll(newCards);
+    for (final set in sets) {
+      await saveSet(set);
+    }
   }
 
   @override

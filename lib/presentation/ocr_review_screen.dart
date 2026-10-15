@@ -9,6 +9,7 @@ import '../domain/ocr_models.dart';
 import '../logic/bank_screenshot_parser.dart';
 import '../logic/ocr_import_controller.dart';
 import '../logic/cashback_controller.dart';
+import '../logic/import_period.dart';
 import 'ocr_confirmation_screen.dart';
 import 'widgets.dart';
 
@@ -29,6 +30,9 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
   final Map<int, Bank> _bankHints = {};
   final Map<int, String> _bankNames = {};
   final Set<int> _savedIndices = {};
+  final Map<int, int> _monthOverrides = {};
+  final Map<int, String> _cardIds = {};
+  bool _saving = false;
   static const _months = [
     'Январь',
     'Февраль',
@@ -122,6 +126,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
                 detectedBank == null && selectedName == null,
                 selectedName != null && selectedBank == null,
                 selectedBank,
+                _monthOverrides[_index] ?? draft.month,
               ),
             const SizedBox(height: 24),
             if (_savedIndices.contains(_index))
@@ -129,8 +134,10 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
                 'Выбранные категории этого скриншота сохранены на телефоне.',
               )
             else
-              const Text(
-                'Это черновик. Отметьте выбранные категории и подтвердите сохранение. После возврата временные копии скриншотов будут удалены.',
+              Text(
+                draft?.categories.any((item) => item.selectionUnknown) == true
+                    ? 'Здесь показаны и выбранные, и предложенные категории. Нажмите «Исправить и сохранить», чтобы отметить выбранные.'
+                    : 'Если всё верно, «Завершить проверку» сохранит найденные категории. Для исправлений откройте редактирование.',
               ),
             const SizedBox(height: 16),
             if (document != null && widget.controller != null) ...[
@@ -156,8 +163,15 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
               const SizedBox(height: 8),
             ],
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Завершить проверку'),
+              onPressed: _saving ? null : _finish,
+              child: Text(_saving ? 'Сохраняем…' : 'Завершить проверку'),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _saving
+                  ? null
+                  : () => Navigator.of(context).pop(_savedIndices.isNotEmpty),
+              child: const Text('Выйти без сохранения новых категорий'),
             ),
           ],
         ),
@@ -173,6 +187,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     bool bankWasGuessed,
     bool unsupportedBank,
     Bank? selectedBank,
+    int? selectedMonth,
   ) {
     return [
       Text(
@@ -200,10 +215,40 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
         ),
       ],
       const SizedBox(height: 16),
-      Text(
-        'Месяц: ${draft.month == null ? 'не определён' : _months[draft.month! - 1]} · Год: ${draft.year ?? 'не указан'}',
-        style: Theme.of(context).textTheme.titleMedium,
+      DropdownButtonFormField<int>(
+        key: ValueKey('review-month-$_index-$selectedMonth'),
+        initialValue: selectedMonth,
+        decoration: const InputDecoration(labelText: 'Месяц'),
+        items: [
+          for (var month = 1; month <= 12; month++)
+            DropdownMenuItem(value: month, child: Text(_months[month - 1])),
+        ],
+        onChanged: (month) {
+          if (month != null) setState(() => _monthOverrides[_index] = month);
+        },
       ),
+      if (selectedBank != null &&
+          (widget.controller?.cards
+                      .where((card) => card.bank == selectedBank)
+                      .length ??
+                  0) >
+              1) ...[
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          key: ValueKey('review-card-$_index-$selectedBank'),
+          initialValue: _cardIds[_index],
+          decoration: const InputDecoration(labelText: 'Карта этого банка'),
+          items: [
+            for (final card in widget.controller!.cards.where(
+              (card) => card.bank == selectedBank,
+            ))
+              DropdownMenuItem(value: card.id, child: Text(card.name)),
+          ],
+          onChanged: (id) {
+            if (id != null) setState(() => _cardIds[_index] = id);
+          },
+        ),
+      ],
       const SizedBox(height: 16),
       for (final warning in draft.warnings)
         Padding(
@@ -275,10 +320,111 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
           result: result,
           controller: widget.controller!,
           initialBank: bank,
+          initialMonth: _monthOverrides[index],
+          initialCardId: _cardIds[index],
         ),
       ),
     );
     if (saved == true && mounted) setState(() => _savedIndices.add(index));
+  }
+
+  Future<void> _finish() async {
+    final controller = widget.controller;
+    if (controller == null) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final items = <QuickImportItem>[];
+    for (var index = 0; index < widget.results.length; index++) {
+      if (_savedIndices.contains(index)) continue;
+      final result = widget.results[index];
+      final document = result.document;
+      if (document == null) {
+        _needsCorrection(index, 'Не удалось прочитать скриншот.');
+        return;
+      }
+      final selectedName = _bankNames[index];
+      final bank = selectedName == null
+          ? _bankHints[index] ?? result.draft?.bank
+          : Bank.values.where((item) => item.label == selectedName).firstOrNull;
+      if (bank == null) {
+        _needsCorrection(index, 'Выберите банк для этого скриншота.');
+        return;
+      }
+      final draft = BankScreenshotParser().parse(document, bankHint: bank);
+      final month = _monthOverrides[index] ?? draft.month;
+      if (month == null) {
+        _needsCorrection(index, 'Выберите месяц для этого скриншота.');
+        return;
+      }
+      if (draft.categories.isEmpty) {
+        _needsCorrection(index, 'Категории не найдены. Исправьте результат.');
+        return;
+      }
+      if (draft.categories.any((item) => item.selectionUnknown)) {
+        _needsCorrection(
+          index,
+          'На этом экране есть предложения банка. Отметьте выбранные категории вручную.',
+        );
+        return;
+      }
+      final cards = controller.cards
+          .where((card) => card.bank == bank)
+          .toList();
+      final cardId = _cardIds[index];
+      if (cards.length > 1 && cardId == null) {
+        _needsCorrection(index, 'Выберите карту этого банка.');
+        return;
+      }
+      items.add(
+        QuickImportItem(
+          bank: bank,
+          cardId: cardId,
+          period: importPeriod(month, year: draft.year),
+          categories: [
+            for (final category in draft.categories)
+              CashbackCategory(
+                id: controller.newId(),
+                originalName: category.originalName,
+                percent: category.percent,
+                rewardType: bank == Bank.sber
+                    ? RewardType.sberSpasibo
+                    : RewardType.rubles,
+                isUpTo: category.isUpTo,
+                notes: category.notes,
+              ),
+          ],
+        ),
+      );
+    }
+    if (items.isEmpty) {
+      Navigator.of(context).pop(_savedIndices.isNotEmpty);
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await controller.saveQuickImport(items);
+      if (mounted) Navigator.of(context).pop(true);
+    } on StateError catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось сохранить категории.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _needsCorrection(int index, String message) {
+    setState(() => _index = index);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openBankPicker() async {

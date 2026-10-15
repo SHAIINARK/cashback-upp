@@ -105,14 +105,97 @@ class CashbackController extends ChangeNotifier {
       .where((set) => set.cardId == cardId && set.period == period)
       .firstOrNull;
 
+  BankCard _cardFor(Bank bank, String? cardId, List<BankCard> created) {
+    final available = [
+      ...repository.cards,
+      ...created,
+    ].where((card) => card.bank == bank).toList();
+    if (cardId != null) {
+      return available.where((card) => card.id == cardId).firstOrNull ??
+          (throw StateError('Выберите карту этого банка.'));
+    }
+    if (available.length > 1) {
+      throw StateError('У этого банка несколько карт. Выберите нужную.');
+    }
+    if (available.length == 1) return available.single;
+    final card = BankCard(
+      id: 'auto-${bank.name}',
+      bank: bank,
+      name: 'Карта 1',
+      rewardType: bank == Bank.sber
+          ? RewardType.sberSpasibo
+          : RewardType.rubles,
+    );
+    created.add(card);
+    return card;
+  }
+
+  Future<void> saveQuickImport(List<QuickImportItem> items) async {
+    if (items.isEmpty) throw ArgumentError('Нет категорий для сохранения.');
+    final created = <BankCard>[];
+    final grouped =
+        <String, (BankCard, CashbackMonth, List<CashbackCategory>)>{};
+    for (final item in items) {
+      if (item.categories.isEmpty) {
+        throw ArgumentError('Нет категорий для сохранения.');
+      }
+      final card = _cardFor(item.bank, item.cardId, created);
+      final key = '${card.id}:${item.period.year}:${item.period.month}';
+      final previous = grouped[key];
+      grouped[key] = (
+        card,
+        item.period,
+        [...?previous?.$3, ...item.categories],
+      );
+    }
+    final sets = <MonthlyCashbackSet>[];
+    for (final group in grouped.values) {
+      final existing = setFor(group.$1.id, group.$2);
+      final merged = <CashbackCategory>[];
+      for (final category in [...?existing?.categories, ...group.$3]) {
+        final duplicate = merged
+            .where(
+              (item) =>
+                  item.originalName.trim().toLowerCase() ==
+                  category.originalName.trim().toLowerCase(),
+            )
+            .firstOrNull;
+        if (duplicate == null) {
+          merged.add(category);
+        } else if (duplicate.percent != category.percent ||
+            duplicate.rewardType != category.rewardType ||
+            duplicate.isUpTo != category.isUpTo ||
+            duplicate.notes != category.notes) {
+          throw StateError(
+            '${group.$1.bank.label}: категория «${category.originalName}» уже сохранена с другими условиями. Проверьте её вручную.',
+          );
+        }
+      }
+      sets.add(
+        MonthlyCashbackSet(
+          cardId: group.$1.id,
+          period: group.$2,
+          categories: merged,
+          confirmedAt: DateTime.now(),
+          notes: existing?.notes ?? '',
+        ),
+      );
+    }
+    await _writable.saveImportBatch(newCards: created, sets: sets);
+    notifyListeners();
+  }
+
   Future<void> saveImportedCategories({
-    required String cardId,
+    String? cardId,
+    required Bank bank,
     required CashbackMonth period,
     required List<CashbackCategory> incoming,
     required ImportSaveMode mode,
   }) async {
     if (incoming.isEmpty) throw ArgumentError('Нет выбранных категорий.');
-    final existing = setFor(cardId, period);
+    final created = <BankCard>[];
+    final card = _cardFor(bank, cardId, created);
+    final existing = setFor(card.id, period);
     if (mode == ImportSaveMode.create && existing != null) {
       throw StateError('Набор уже существует.');
     }
@@ -130,17 +213,34 @@ class CashbackController extends ChangeNotifier {
         'Категория с таким названием уже есть у карты в этом месяце.',
       );
     }
-    await _writable.saveSet(
-      MonthlyCashbackSet(
-        cardId: cardId,
-        period: period,
-        categories: categories,
-        confirmedAt: DateTime.now(),
-        notes: existing?.notes ?? '',
-      ),
+    await _writable.saveImportBatch(
+      newCards: created,
+      sets: [
+        MonthlyCashbackSet(
+          cardId: card.id,
+          period: period,
+          categories: categories,
+          confirmedAt: DateTime.now(),
+          notes: existing?.notes ?? '',
+        ),
+      ],
     );
     notifyListeners();
   }
 }
 
 enum ImportSaveMode { create, append, replace }
+
+class QuickImportItem {
+  const QuickImportItem({
+    required this.bank,
+    required this.period,
+    required this.categories,
+    this.cardId,
+  });
+
+  final Bank bank;
+  final CashbackMonth period;
+  final List<CashbackCategory> categories;
+  final String? cardId;
+}

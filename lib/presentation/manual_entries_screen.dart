@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/models.dart';
 import '../logic/cashback_controller.dart';
+import '../logic/import_period.dart';
 import 'widgets.dart';
 
 class ManualEntriesScreen extends StatefulWidget {
@@ -36,7 +37,8 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
     final result =
         await showDialog<({Bank bank, String name, RewardType rewardType})>(
           context: context,
-          builder: (_) => _CardDialog(card: card),
+          builder: (_) =>
+              _CardDialog(card: card, cards: widget.controller.cards),
         );
     if (result == null) return;
     await _run(
@@ -122,7 +124,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
           child: PageBody(
             children: [
               const Text(
-                'Карта нужна, чтобы показывать её категории кэшбэка отдельно от других карт. Достаточно банка и удобного названия — номер карты не нужен. Данные остаются на этом устройстве.',
+                'При импорте достаточно выбрать банк: карта появится автоматически. Добавляйте отдельную карту, только если у вас несколько карт одного банка. Номер карты не нужен.',
               ),
               const SizedBox(height: 16),
               FilledButton.icon(
@@ -135,7 +137,8 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
                 const EmptyState(
                   icon: Icons.credit_card_outlined,
                   title: 'Карт пока нет',
-                  description: 'Добавьте название карты и банк, затем выбранные категории.',
+                  description:
+                      'Добавьте скриншот категорий или создайте карту вручную.',
                 ),
               for (final card in cards) ...[
                 SurfacePanel(
@@ -146,7 +149,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              '${card.bank.label} · ${card.name}',
+                              '${card.bank.label}${cards.where((item) => item.bank == card.bank).length > 1 || !card.id.startsWith('auto-') ? ' · ${card.name}' : ''}',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
@@ -191,7 +194,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
                       )) ...[
                         const Divider(height: 24),
                         Text(
-                          '${set.period.month.toString().padLeft(2, '0')}.${set.period.year}',
+                          'Месяц ${set.period.month}',
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                         for (final category in set.categories)
@@ -249,8 +252,9 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
 }
 
 class _CardDialog extends StatefulWidget {
-  const _CardDialog({this.card});
+  const _CardDialog({this.card, required this.cards});
   final BankCard? card;
+  final List<BankCard> cards;
   @override
   State<_CardDialog> createState() => _CardDialogState();
 }
@@ -297,10 +301,29 @@ class _CardDialogState extends State<_CardDialog> {
               controller: _name,
               autofocus: true,
               maxLength: 60,
-              decoration: const InputDecoration(labelText: 'Название карты'),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Введите название'
-                  : null,
+              decoration: InputDecoration(
+                labelText:
+                    widget.cards.any(
+                      (card) =>
+                          card.bank == _bank && card.id != widget.card?.id,
+                    )
+                    ? 'Как отличать эту карту?'
+                    : 'Название карты',
+                hintText: 'Например, дебетовая или кредитная',
+              ),
+              validator: (value) {
+                final name = value?.trim() ?? '';
+                if (name.isEmpty) return 'Введите название';
+                if (widget.cards.any(
+                  (card) =>
+                      card.bank == _bank &&
+                      card.id != widget.card?.id &&
+                      card.name.toLowerCase() == name.toLowerCase(),
+                )) {
+                  return 'У этого банка уже есть карта с таким названием';
+                }
+                return null;
+              },
             ),
             DropdownButtonFormField<RewardType>(
               key: ValueKey(_reward),
@@ -387,38 +410,19 @@ class _CategoryDialogState extends State<_CategoryDialog> {
           children: [
             Text('${widget.card.bank.label} · ${widget.card.name}'),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _month,
-                    decoration: const InputDecoration(labelText: 'Месяц'),
-                    items: [
-                      for (var m = 1; m <= 12; m++)
-                        DropdownMenuItem(value: m, child: Text('$m')),
-                    ],
-                    onChanged: widget.category == null
-                        ? (value) => _month = value!
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
-                    initialValue: '$_year',
-                    keyboardType: TextInputType.number,
-                    enabled: widget.category == null,
-                    decoration: const InputDecoration(labelText: 'Год'),
-                    validator: (value) {
-                      final parsed = int.tryParse(value ?? '');
-                      return parsed == null || parsed < 2000 || parsed > 9999
-                          ? 'Проверьте год'
-                          : null;
-                    },
-                    onSaved: (value) => _year = int.parse(value!),
-                  ),
-                ),
+            DropdownButtonFormField<int>(
+              initialValue: _month,
+              decoration: const InputDecoration(labelText: 'Месяц'),
+              items: [
+                for (var m = 1; m <= 12; m++)
+                  DropdownMenuItem(value: m, child: Text('$m')),
               ],
+              onChanged: widget.category == null
+                  ? (value) {
+                      _month = value!;
+                      _year = importPeriod(_month).year;
+                    }
+                  : null,
             ),
             TextFormField(
               controller: _name,

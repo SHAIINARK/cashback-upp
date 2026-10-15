@@ -123,6 +123,36 @@ class LocalCashbackRepository implements WritableCashbackRepository {
   );
 
   @override
+  Future<void> saveImportBatch({
+    required List<BankCard> newCards,
+    required List<MonthlyCashbackSet> sets,
+  }) => _change(
+    (cards) {
+      final ids = cards.map((card) => card.id).toSet();
+      for (final card in newCards) {
+        if (!ids.add(card.id)) throw StateError('Карта уже существует.');
+        cards.add(card);
+      }
+      if (sets.any((set) => !ids.contains(set.cardId))) {
+        throw StateError('Карта для категории не найдена.');
+      }
+      return cards;
+    },
+    (current) {
+      final keys = <String>{};
+      for (final set in sets) {
+        final key = '${set.cardId}:${set.period.year}:${set.period.month}';
+        if (!keys.add(key)) throw StateError('Повторяется месячный набор.');
+        current.removeWhere(
+          (item) => item.cardId == set.cardId && item.period == set.period,
+        );
+        current.add(set);
+      }
+      return current;
+    },
+  );
+
+  @override
   Future<void> deleteSet(String cardId, CashbackMonth period) => _change(
     (cards) => cards,
     (sets) => sets
