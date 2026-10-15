@@ -122,7 +122,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
           child: PageBody(
             children: [
               const Text(
-                'Добавляйте только выбранные в банке категории. Данные остаются на этом устройстве.',
+                'Карта нужна, чтобы показывать её категории кэшбэка отдельно от других карт. Достаточно банка и удобного названия — номер карты не нужен. Данные остаются на этом устройстве.',
               ),
               const SizedBox(height: 16),
               FilledButton.icon(

@@ -259,6 +259,10 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
             ),
             const SizedBox(height: 12),
             if (_draft.bank != null) ...[
+              const Text(
+                'Выберите карту, к которой относятся категории. Достаточно её названия — реквизиты не нужны.',
+              ),
+              const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 key: ValueKey('card-${_draft.bank}-${_draft.cardId}'),
                 initialValue: cards.any((card) => card.id == _draft.cardId)
