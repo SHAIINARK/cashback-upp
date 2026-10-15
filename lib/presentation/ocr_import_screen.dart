@@ -174,6 +174,15 @@ class _ImportScreenState extends State<ImportScreen> {
                   fontSize: 14,
                 ),
               ),
+              const SizedBox(height: 8),
+              const Text(
+                'Если список категорий пролистывается, добавьте несколько снимков. Проверьте, что выбор уже подтверждён в банке.',
+                style: TextStyle(
+                  color: Color(0xFFD3E1DB),
+                  height: 1.35,
+                  fontSize: 14,
+                ),
+              ),
               const SizedBox(height: 26),
               if (_controller.busy) ...[
                 LinearProgressIndicator(
