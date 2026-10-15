@@ -5,6 +5,8 @@ import 'package:integration_test/integration_test_driver.dart';
 
 Future<void> main() async {
   final device = Platform.environment['OCR_DEVICE'] ?? 'RF8T1051S0V';
+  final package =
+      Platform.environment['OCR_PACKAGE'] ?? 'ru.cashbackguide.balance_app.qa';
   // flutter drive may reinstall the app. Prepare private inputs only after its
   // installation and before the paused test isolate is resumed by the driver.
   final preparation = await Process.run('pwsh', [
@@ -13,6 +15,8 @@ Future<void> main() async {
     'tool/prepare_ocr_fixtures.ps1',
     '-Device',
     device,
+    '-Package',
+    package,
   ]);
   if (preparation.exitCode != 0) {
     throw StateError(
@@ -40,7 +44,7 @@ Future<void> main() async {
         device,
         'shell',
         'run-as',
-        'ru.cashbackguide.balance_app',
+        package,
         'rm',
         '-r',
         'files/ocr-fixtures',

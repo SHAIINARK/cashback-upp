@@ -12,6 +12,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+const _package = String.fromEnvironment(
+  'OCR_PACKAGE',
+  defaultValue: 'ru.cashbackguide.balance_app.qa',
+);
+String _fixture(int number) =>
+    '/data/user/0/$_package/files/ocr-fixtures/$number.jpg';
+
 // Picker-only substitution: real private image, real on-device OCR, real UI.
 class _FixturePicker extends ImagePicker {
   @override
@@ -23,9 +30,7 @@ class _FixturePicker extends ImagePicker {
     int? imageQuality,
     int? limit,
     bool requestFullMetadata = true,
-  }) async => [
-    XFile('/data/user/0/ru.cashbackguide.balance_app/files/ocr-fixtures/1.jpg'),
-  ];
+  }) async => [XFile(_fixture(1))];
 }
 
 /// Private fixtures are supplied to app-private files by the host, not bundled.
@@ -40,9 +45,7 @@ void main() {
     const banks = [Bank.ozon, Bank.sber, Bank.alfa, Bank.tbank, Bank.vtb];
     final reports = <Map<String, dynamic>>[];
     for (var i = 0; i < banks.length; i++) {
-      final file = File(
-        '/data/user/0/ru.cashbackguide.balance_app/files/ocr-fixtures/${i + 1}.jpg',
-      );
+      final file = File(_fixture(i + 1));
       expect(
         await file.exists(),
         isTrue,
@@ -99,7 +102,7 @@ void main() {
     binding.reportData = {'reports': reports};
     final badgeDebug = await const MethodChannel('cashback/ocr')
         .invokeMapMethod<String, dynamic>('recognize', {
-          'path': '/data/user/0/ru.cashbackguide.balance_app/files/ocr-fixtures/2.jpg',
+          'path': _fixture(2),
           'mode': 'sparse',
           'debugCandidates': true,
         });
@@ -171,12 +174,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(finish);
       await tester.pumpAndSettle();
-      expect(
-        await File(
-          '/data/user/0/ru.cashbackguide.balance_app/files/ocr-fixtures/1.jpg',
-        ).exists(),
-        isTrue,
-      );
+      expect(await File(_fixture(1)).exists(), isTrue);
       binding.reportData!['uiSmokeTest'] = 'passed';
     },
   );

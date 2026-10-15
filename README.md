@@ -24,26 +24,28 @@ Flutter-приложение на русском для Альфы, Т-Банк�
 flutter pub get
 flutter analyze
 flutter test
-flutter run -d RF8T1051S0V
-flutter build apk --debug
+flutter run --flavor standard -d RF8T1051S0V
+flutter build apk --debug --flavor standard
 ```
 
-APK: `build/app/outputs/flutter-apk/app-debug.apk`. Это отладочная сборка, не пакет для магазина. Tesseract4Android загружается из JitPack при сборке; распознавание после установки не требует сети. Сетевые разрешения debug нужны инструментам Flutter.
+APK: `build/app/outputs/flutter-apk/app-standard-debug.apk`. Это отладочная сборка, не пакет для магазина. Tesseract4Android загружается из JitPack при сборке; распознавание после установки не требует сети. Сетевые разрешения debug нужны инструментам Flutter.
 
 ## Структура и проверка
 
 `lib/domain` — модели и независимый контракт OCR; `lib/data` — нативный адаптер и репозиторий; `lib/logic` — контроллер импорта и отдельные банковские правила; `lib/presentation` — интерфейс; `android`/`ios` — платформенные движки. Пользовательская база не зависит от формата OCR.
 
-[Результаты реальных измерений](docs/OCR_RESULTS.md), [исследование движков](docs/OCR_ENGINE_RESEARCH.md), [происхождение моделей](docs/ocr-models.json).
+[Результаты реальных измерений](docs/OCR_RESULTS.md), [оценка выбранности](docs/SELECTION_EVIDENCE.md), [исследование движков](docs/OCR_ENGINE_RESEARCH.md), [происхождение моделей](docs/ocr-models.json).
 
 Для повторения измерений нужны пять оригиналов из раздела 6 PROJECT_CONTEXT.md и подключённый отладочный телефон:
 
 ```powershell
 $env:OCR_DEVICE='RF8T1051S0V'
-flutter drive --driver=test_driver/ocr_driver.dart --target=integration_test/ocr_benchmark_test.dart -d RF8T1051S0V
+$env:OCR_PACKAGE='ru.cashbackguide.balance_app.qa'
+flutter drive --flavor qa --dart-define=OCR_PACKAGE=ru.cashbackguide.balance_app.qa --driver=test_driver/ocr_driver.dart --target=integration_test/ocr_benchmark_test.dart -d RF8T1051S0V
+flutter drive --flavor qa --dart-define=OCR_PACKAGE=ru.cashbackguide.balance_app.qa --driver=test_driver/ocr_driver.dart --target=integration_test/ocr_confirmation_e2e_test.dart -d RF8T1051S0V
 ```
 
-Драйвер передаёт реальные изображения в приватные файлы тестового приложения, проверяет копии и удаляет их после теста. Отчёт и снимок интерфейса сохраняются в игнорируемой `private-data`. Не добавлять их в Git. Тест может переустановить приложение и очистить его данные; использовать тестовый телефон/установку. После него пересобрать обычный APK без тестового target.
+QA-сборка имеет отдельный Android ID с суффиксом `.qa`, поэтому её установка и данные не затрагивают обычное приложение. Драйвер передаёт реальные изображения в приватные файлы QA-копии, проверяет копии и удаляет их после теста. Отчёт и снимок интерфейса сохраняются в игнорируемой `private-data`. Не добавлять их в Git. Второй тест проходит OCR → проверку → выбор строки → подтверждение → повторное чтение локального набора. Системный выбор из галереи в тесте заменён передачей файла; вручную он ещё не проверен. После тестов пересобрать обычный APK с `--flavor standard`.
 
 ## iOS и следующие этапы
 

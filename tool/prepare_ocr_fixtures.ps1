@@ -1,7 +1,10 @@
-param([string]$Device = 'RF8T1051S0V')
+param(
+    [string]$Device = 'RF8T1051S0V',
+    [string]$Package = 'ru.cashbackguide.balance_app.qa'
+)
 $ErrorActionPreference = 'Stop'
 $adb = 'D:\dev-tools\android-sdk\platform-tools\adb.exe'
-$package = 'ru.cashbackguide.balance_app'
+$package = $Package
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $context = Get-Content (Join-Path $projectRoot 'PROJECT_CONTEXT.md')
 $fixtureNames = @($context | ForEach-Object { if ($_ -match '^\d\. `([^`]+\.jpg)`$') { $Matches[1] } })
