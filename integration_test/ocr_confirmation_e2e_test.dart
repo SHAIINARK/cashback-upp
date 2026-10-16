@@ -41,6 +41,25 @@ Future<void> _waitFor(WidgetTester tester, Finder finder) async {
   expect(finder, findsWidgets);
 }
 
+Future<void> _waitForImportReady(WidgetTester tester) async {
+  await _waitFor(tester, find.text('Выбрать скриншоты'));
+  await tester.pumpAndSettle();
+  for (var i = 0; i < 100; i++) {
+    await tester.pump();
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Выбрать скриншоты'),
+    );
+    if (button.onPressed != null &&
+        find.text('Завершить проверку').evaluate().isEmpty) {
+      return;
+    }
+    await tester.runAsync(
+      () async => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+  }
+  fail('Импорт не стал доступен после возврата из проверки.');
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -72,7 +91,7 @@ void main() {
         ),
       ),
     );
-    await _waitFor(tester, find.text('Выбрать скриншоты'));
+    await _waitForImportReady(tester);
     final pick = find.text('Выбрать скриншоты');
     await tester.ensureVisible(pick);
     await tester.pumpAndSettle();
@@ -94,12 +113,33 @@ void main() {
     await tester.ensureVisible(review);
     await tester.pumpAndSettle();
     await tester.tap(review);
-    await _waitFor(tester, find.text('Выбрать скриншоты'));
+    await _waitForImportReady(tester);
     expect(repository.monthlySets.single.categories, isNotEmpty);
     expect(repository.monthlySets.single.period, CashbackMonth(2026, 10));
     final reloaded = LocalCashbackRepository(directory: directory);
     await reloaded.load();
     expect(reloaded.monthlySets.single.categories, isNotEmpty);
     expect(reloaded.cards.single.bank, Bank.ozon);
+
+    final originalCount = reloaded.monthlySets.single.categories.length;
+    await tester.tap(find.text('Выбрать скриншоты'));
+    await _waitFor(tester, find.text('Завершить проверку'));
+    final repeatFinish = find.text('Завершить проверку');
+    await tester.ensureVisible(repeatFinish);
+    await tester.pumpAndSettle();
+    await tester.tap(repeatFinish);
+    await _waitForImportReady(tester);
+    expect(repository.cards.length, 1);
+    expect(repository.monthlySets.length, 1);
+    expect(repository.monthlySets.single.categories.length, originalCount);
+
+    await tester.tap(find.text('Выбрать скриншоты'));
+    await _waitFor(tester, find.text('Выйти без сохранения новых категорий'));
+    final exit = find.text('Выйти без сохранения новых категорий');
+    await tester.ensureVisible(exit);
+    await tester.pumpAndSettle();
+    await tester.tap(exit);
+    await _waitForImportReady(tester);
+    expect(repository.monthlySets.single.categories.length, originalCount);
   });
 }
