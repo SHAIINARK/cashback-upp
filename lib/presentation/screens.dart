@@ -407,7 +407,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Text('Кэшбэк рядом', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            const Text('Версия 0.6.0 · поиск категорий'),
+            const Text('Версия 0.6.1 · поиск категорий'),
             const Divider(height: 32),
             const _SettingRow(
               icon: Icons.language,

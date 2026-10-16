@@ -263,6 +263,13 @@ class BankScreenshotParser {
       _rate.hasMatch(text);
 
   Bank _guessBank(String text) {
+    // The VTB cashback screen can omit the bank name. Require both a
+    // distinctive base category and the visible monthly selector or partner.
+    if (text.contains('все остальные покупки') &&
+        (text.contains('wildberries') ||
+            RegExp(r'август\s+сентябрь\s+октябрь').hasMatch(text))) {
+      return Bank.vtb;
+    }
     if (text.contains('ваши категории') || text.contains('история бонусов')) {
       return Bank.sber;
     }

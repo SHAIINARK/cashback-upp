@@ -99,6 +99,49 @@ void main() {
         });
       }
     }
+    const expected = <int, (String, List<String>)>{
+      1: (
+        'auto',
+        [
+          'Все покупки',
+          'Аптеки',
+          'Транспорт',
+          'Фастфуд',
+          'Перекрёсток Доставка',
+        ],
+      ),
+      2: ('sparse', ['Такси и каршеринг', 'Транспорт', 'Хобби и развлечения']),
+      3: ('sparse', ['За все покупки', 'Дом и ремонт', 'Фастфуд']),
+      5: ('sparse', ['Wildberries', 'Все остальные покупки', 'Супермаркеты']),
+    };
+    for (final entry in expected.entries) {
+      final result = reports.singleWhere(
+        (item) =>
+            item['fixture'] == entry.key && item['mode'] == entry.value.$1,
+      );
+      final names = (result['categories'] as List<dynamic>)
+          .map((item) => (item as Map<String, dynamic>)['name'])
+          .toList();
+      expect(
+        names,
+        entry.value.$2,
+        reason: 'Known screenshot ${entry.key} changed.',
+      );
+    }
+    final tbank = reports.singleWhere(
+      (item) => item['fixture'] == 4 && item['mode'] == 'sparse',
+    );
+    expect((tbank['categories'] as List<dynamic>).length, 8);
+    expect(
+      (tbank['categories'] as List<dynamic>).every(
+        (item) => (item as Map<String, dynamic>)['selectionUnknown'] == true,
+      ),
+      isTrue,
+    );
+    final vtb = reports.singleWhere(
+      (item) => item['fixture'] == 5 && item['mode'] == 'sparse',
+    );
+    expect(vtb['detectedBank'], Bank.vtb.name);
     binding.reportData = {'reports': reports};
     final badgeDebug = await const MethodChannel('cashback/ocr')
         .invokeMapMethod<String, dynamic>('recognize', {

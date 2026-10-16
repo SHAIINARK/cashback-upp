@@ -32,6 +32,30 @@ void main() {
     );
   });
 
+  test(
+    'VTB screen without bank label is guessed from two independent cues',
+    () {
+      final result = parse([
+        line('Кешбэк', .15),
+        line('Август Сентябрь Октябрь', .3),
+        line('3% Wildberries', .4),
+        line('1% Все остальные покупки', .55),
+        line('2% Супермаркеты', .65),
+      ]);
+      expect(result.bank, Bank.vtb);
+      expect(result.bankIsGuess, isTrue);
+      expect(result.categories.length, 3);
+    },
+  );
+
+  test('Generic purchases phrase does not identify VTB alone', () {
+    final result = parse([
+      line('Кешбэк за покупки', .2),
+      line('1% Все остальные покупки', .4),
+    ]);
+    expect(result.bank, isNot(Bank.vtb));
+  });
+
   test('Unrelated text and percentages do not get a bank', () {
     final result = parse([
       line('Расписание кинотеатра', .2),
