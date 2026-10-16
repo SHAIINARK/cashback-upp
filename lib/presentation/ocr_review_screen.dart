@@ -25,14 +25,52 @@ class ImportReviewScreen extends StatefulWidget {
   State<ImportReviewScreen> createState() => _ImportReviewScreenState();
 }
 
-class _ImportReviewScreenState extends State<ImportReviewScreen> {
+class _ImportReviewScreenState extends State<ImportReviewScreen>
+    with WidgetsBindingObserver {
   int _index = 0;
   final Map<int, Bank> _bankHints = {};
   final Map<int, String> _bankNames = {};
   final Set<int> _savedIndices = {};
   final Map<int, CashbackMonth> _monthOverrides = {};
   final Map<int, String> _cardIds = {};
+  final LayerLink _bankLayer = LayerLink();
+  final GlobalKey _bankAnchorKey = GlobalKey();
+  final TextEditingController _bankSearch = TextEditingController();
+  final FocusNode _bankSearchFocus = FocusNode();
+  OverlayEntry? _bankOverlay;
+  bool _bankPickerOpen = false;
+  bool _keyboardWasVisible = false;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _bankOverlay?.remove();
+    _bankOverlay?.dispose();
+    _bankSearch.dispose();
+    _bankSearchFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_bankPickerOpen) return;
+      final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+      if (_keyboardWasVisible && !keyboardVisible) {
+        _closeBankPicker();
+      } else {
+        _keyboardWasVisible = keyboardVisible;
+        _bankOverlay?.markNeedsBuild();
+      }
+    });
+  }
 
   CashbackMonth? _periodFor(ParsedScreenshot draft) =>
       draft.month == null ? null : importPeriod(draft.month!, year: draft.year);
@@ -70,100 +108,108 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     final draft = document == null
         ? null
         : BankScreenshotParser().parse(document, bankHint: selectedBank);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Проверка импорта')),
-      body: SafeArea(
-        child: PageBody(
-          children: [
-            Text(
-              'Скриншот ${_index + 1} из ${widget.results.length}',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 10),
-            _ScreenshotNavigation(
-              count: widget.results.length,
-              selected: _index,
-              onSelect: (index) => setState(() => _index = index),
-            ),
-            const SizedBox(height: 16),
-            ExpansionTile(
-              title: const Text('Посмотреть исходный скриншот'),
-              children: [
-                Image.file(
-                  File(result.path),
-                  cacheWidth: 1080,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) =>
-                      const Text('Предпросмотр недоступен'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (result.error != null)
-              EmptyState(
-                icon: Icons.error_outline,
-                title: 'Распознавание не удалось',
-                description: result.error!,
-              ),
-            if (draft != null && document != null)
-              ..._draftWidgets(
-                context,
-                draft,
-                document,
-                selectedName ?? selectedBank?.label ?? 'Выбрать банк',
-                detectedBank == null && selectedName == null,
-                result.draft?.bankIsGuess == true && selectedName == null,
-                selectedName != null && selectedBank == null,
-                selectedBank,
-                _monthOverrides[_index] ?? _periodFor(draft),
-              ),
-            const SizedBox(height: 24),
-            if (_savedIndices.contains(_index))
-              const Text(
-                'Выбранные категории этого скриншота сохранены на телефоне.',
-              )
-            else
+    return PopScope(
+      canPop: !_bankPickerOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _bankPickerOpen) _closeBankPicker();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Проверка импорта')),
+        body: SafeArea(
+          child: PageBody(
+            children: [
               Text(
-                draft?.categories.any((item) => item.selectionUnknown) == true
-                    ? 'Здесь показаны и выбранные, и предложенные категории. Нажмите «Исправить и сохранить», чтобы отметить выбранные.'
-                    : 'Если всё верно, «Завершить проверку» сохранит найденные категории. Для исправлений откройте редактирование.',
+                'Скриншот ${_index + 1} из ${widget.results.length}',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-            const SizedBox(height: 16),
-            if (document != null && widget.controller != null) ...[
-              FilledButton.icon(
-                onPressed: () => _openConfirmation(result, selectedBank),
-                icon: const Icon(Icons.edit_outlined),
-                label: Text(
-                  _savedIndices.contains(_index)
-                      ? 'Проверить и сохранить снова'
-                      : 'Исправить и сохранить',
+              const SizedBox(height: 10),
+              _ScreenshotNavigation(
+                count: widget.results.length,
+                selected: _index,
+                onSelect: _selectScreenshot,
+              ),
+              const SizedBox(height: 16),
+              ExpansionTile(
+                title: const Text('Посмотреть исходный скриншот'),
+                children: [
+                  Image.file(
+                    File(result.path),
+                    cacheWidth: 1080,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) =>
+                        const Text('Предпросмотр недоступен'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (result.error != null)
+                EmptyState(
+                  icon: Icons.error_outline,
+                  title: 'Распознавание не удалось',
+                  description: result.error!,
                 ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (widget.results.length > 1) ...[
-              OutlinedButton.icon(
-                onPressed: _index < widget.results.length - 1
-                    ? () => setState(() => _index++)
-                    : null,
-                icon: const Icon(Icons.arrow_forward),
-                label: const Text('Далее'),
+              if (draft != null && document != null)
+                ..._draftWidgets(
+                  context,
+                  draft,
+                  document,
+                  selectedName ?? selectedBank?.label ?? 'Выбрать банк',
+                  detectedBank == null && selectedName == null,
+                  result.draft?.bankIsGuess == true && selectedName == null,
+                  selectedName != null && selectedBank == null,
+                  selectedBank,
+                  _monthOverrides[_index] ?? _periodFor(draft),
+                ),
+              const SizedBox(height: 24),
+              if (_savedIndices.contains(_index))
+                const Text(
+                  'Выбранные категории этого скриншота сохранены на телефоне.',
+                )
+              else
+                Text(
+                  draft?.categories.any((item) => item.selectionUnknown) == true
+                      ? 'Здесь показаны и выбранные, и предложенные категории. Нажмите «Исправить и сохранить», чтобы отметить выбранные.'
+                      : 'Если всё верно, «Завершить проверку» сохранит найденные категории. Для исправлений откройте редактирование.',
+                ),
+              const SizedBox(height: 16),
+              if (document != null && widget.controller != null) ...[
+                FilledButton.icon(
+                  onPressed: () => _openConfirmation(result, selectedBank),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: Text(
+                    _savedIndices.contains(_index)
+                        ? 'Проверить и сохранить снова'
+                        : 'Исправить и сохранить',
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (widget.results.length > 1) ...[
+                OutlinedButton.icon(
+                  onPressed: _index < widget.results.length - 1
+                      ? () => _selectScreenshot(_index + 1)
+                      : null,
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('Далее'),
+                ),
+                const SizedBox(height: 8),
+              ],
+              FilledButton(
+                onPressed: _saving ? null : _finish,
+                child: Text(_saving ? 'Сохраняем…' : 'Завершить проверку'),
               ),
               const SizedBox(height: 8),
+              TextButton(
+                onPressed: _saving
+                    ? null
+                    : () => Navigator.of(context).pop(_savedIndices.isNotEmpty),
+                child: const Text('Выйти без сохранения новых категорий'),
+              ),
+              if (_bankPickerOpen)
+                SizedBox(height: MediaQuery.sizeOf(context).height),
             ],
-            FilledButton(
-              onPressed: _saving ? null : _finish,
-              child: Text(_saving ? 'Сохраняем…' : 'Завершить проверку'),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: _saving
-                  ? null
-                  : () => Navigator.of(context).pop(_savedIndices.isNotEmpty),
-              child: const Text('Выйти без сохранения новых категорий'),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -189,14 +235,18 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
         style: Theme.of(context).textTheme.bodyMedium,
       ),
       const SizedBox(height: 16),
-      OutlinedButton.icon(
-        onPressed: _openBankPicker,
-        style: OutlinedButton.styleFrom(
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      CompositedTransformTarget(
+        link: _bankLayer,
+        child: OutlinedButton.icon(
+          key: _bankAnchorKey,
+          onPressed: _openBankPicker,
+          style: OutlinedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+          icon: const Icon(Icons.account_balance_outlined),
+          label: Text(bankLabel, overflow: TextOverflow.ellipsis),
         ),
-        icon: const Icon(Icons.account_balance_outlined),
-        label: Text(bankLabel, overflow: TextOverflow.ellipsis),
       ),
       if (bankNeedsSelection) ...[
         const SizedBox(height: 8),
@@ -471,124 +521,157 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _selectScreenshot(int index) {
+    if (index == _index) return;
+    if (_bankPickerOpen) _closeBankPicker();
+    setState(() => _index = index);
+  }
+
   Future<void> _openBankPicker() async {
-    final index = _index;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => const _BankPicker(),
+    if (_bankPickerOpen) {
+      _closeBankPicker();
+      return;
+    }
+    _bankSearch.clear();
+    _keyboardWasVisible = false;
+    setState(() => _bankPickerOpen = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_bankPickerOpen) return;
+    final anchor = _bankAnchorKey.currentContext;
+    if (anchor == null || !anchor.mounted) return;
+    await Scrollable.ensureVisible(
+      anchor,
+      alignment: 0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
     );
-    if (!mounted || selected == null) return;
-    final bank = Bank.values
-        .where(
-          (item) => item.label.toLowerCase() == selected.trim().toLowerCase(),
-        )
-        .firstOrNull;
-    setState(() {
-      _bankNames[index] = bank?.label ?? selected.trim();
-      if (bank == null) {
-        _bankHints.remove(index);
-      } else {
-        _bankHints[index] = bank;
-      }
+    if (!mounted || !_bankPickerOpen) return;
+    _bankOverlay = OverlayEntry(builder: _buildBankOverlay);
+    Overlay.of(context).insert(_bankOverlay!);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _bankPickerOpen) _bankSearchFocus.requestFocus();
     });
+  }
+
+  Widget _buildBankOverlay(BuildContext overlayContext) {
+    final anchorBox =
+        _bankAnchorKey.currentContext?.findRenderObject() as RenderBox?;
+    final anchorHeight = anchorBox?.size.height ?? 56.0;
+    final anchorWidth =
+        anchorBox?.size.width ?? MediaQuery.sizeOf(context).width - 48;
+    final anchorBottom = anchorBox == null
+        ? 0.0
+        : anchorBox.localToGlobal(Offset(0, anchorHeight)).dy;
+    final keyboardTop =
+        MediaQuery.sizeOf(overlayContext).height -
+        MediaQuery.viewInsetsOf(overlayContext).bottom;
+    final available = math.max(0.0, keyboardTop - anchorBottom - 8);
+    final query = _bankSearch.text.trim().toLowerCase();
+    final matches = Bank.values
+        .where((bank) => bank.label.toLowerCase().contains(query))
+        .toList();
+    final listHeight = math.min(
+      available,
+      math.max(56.0, matches.length * 56.0),
+    );
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _closeBankPicker,
+          ),
+        ),
+        CompositedTransformFollower(
+          link: _bankLayer,
+          showWhenUnlinked: false,
+          child: Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: anchorWidth,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: anchorHeight,
+                    child: TextField(
+                      controller: _bankSearch,
+                      focusNode: _bankSearchFocus,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Название банка',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: IconButton(
+                          tooltip: 'Закрыть выбор банка',
+                          icon: const Icon(Icons.close),
+                          onPressed: _closeBankPicker,
+                        ),
+                        filled: true,
+                        fillColor: Theme.of(context).scaffoldBackgroundColor,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(32),
+                        ),
+                      ),
+                      onChanged: (_) => _bankOverlay?.markNeedsBuild(),
+                      onSubmitted: (_) {
+                        if (matches.length == 1) _chooseBank(matches.single);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  if (listHeight > 0)
+                    SizedBox(
+                      height: listHeight,
+                      child: Material(
+                        color: Theme.of(context).colorScheme.surface,
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(16),
+                        clipBehavior: Clip.antiAlias,
+                        child: matches.isEmpty
+                            ? const Center(child: Text('Банк не найден'))
+                            : ListView.builder(
+                                padding: EdgeInsets.zero,
+                                itemCount: matches.length,
+                                itemBuilder: (context, index) => SizedBox(
+                                  height: 56,
+                                  child: ListTile(
+                                    title: Text(matches[index].label),
+                                    onTap: () => _chooseBank(matches[index]),
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _chooseBank(Bank bank) {
+    final index = _index;
+    _closeBankPicker();
+    setState(() {
+      _bankNames[index] = bank.label;
+      _bankHints[index] = bank;
+    });
+  }
+
+  void _closeBankPicker() {
+    if (!_bankPickerOpen) return;
+    _bankOverlay?.remove();
+    _bankOverlay?.dispose();
+    _bankOverlay = null;
+    _bankSearchFocus.unfocus();
+    if (mounted) setState(() => _bankPickerOpen = false);
   }
 
   String _rate(double value) => value == value.truncateToDouble()
       ? value.toInt().toString()
       : value.toString().replaceAll('.', ',');
-}
-
-class _BankPicker extends StatefulWidget {
-  const _BankPicker();
-
-  @override
-  State<_BankPicker> createState() => _BankPickerState();
-}
-
-class _BankPickerState extends State<_BankPicker> {
-  final _controller = TextEditingController();
-  String _query = '';
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final inset = MediaQuery.viewInsetsOf(context).bottom;
-    final availableHeight = MediaQuery.sizeOf(context).height - inset - 24;
-    final height = math.min(460.0, math.max(200.0, availableHeight));
-    final matches = Bank.values.where(
-      (bank) => bank.label.toLowerCase().contains(_query.trim().toLowerCase()),
-    );
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: inset),
-      child: SizedBox(
-        height: height,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Выберите банк',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _controller,
-                autofocus: true,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  hintText: 'Название банка',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (value) => setState(() => _query = value),
-                onSubmitted: (value) {
-                  if (value.trim().isNotEmpty) {
-                    Navigator.of(context).pop(value.trim());
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView(
-                  children: [
-                    for (final bank in matches)
-                      ListTile(
-                        title: Text(bank.label),
-                        onTap: () => Navigator.of(context).pop(bank.label),
-                      ),
-                    if (matches.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text(
-                          'В списке нет такого банка. Можно вписать его название.',
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (_query.trim().isNotEmpty) ...[
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(_query.trim()),
-                  child: const Text('Использовать введённое название'),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _ScreenshotNavigation extends StatelessWidget {

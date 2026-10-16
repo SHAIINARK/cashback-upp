@@ -123,6 +123,68 @@ void main() {
       'Аптеки',
     );
   });
+
+  testWidgets('Bank search opens in place and back closes it once', (
+    tester,
+  ) async {
+    final repository = _MemoryRepository();
+    final controller = CashbackController(repository);
+    addTearDown(controller.dispose);
+    final document = OcrDocument(
+      lines: [
+        const OcrLine(
+          text: 'Ваша выгода в октябре',
+          left: .1,
+          top: .2,
+          right: .8,
+          bottom: .22,
+        ),
+        const OcrLine(
+          text: '5% Аптеки',
+          left: .1,
+          top: .4,
+          right: .8,
+          bottom: .42,
+        ),
+      ],
+      width: 1080,
+      height: 2400,
+      engine: 'test',
+      elapsedMs: 1,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ImportReviewScreen(
+          results: [
+            ScreenshotResult(
+              path: 'private-preview',
+              document: document,
+              draft: BankScreenshotParser().parse(document),
+            ),
+          ],
+          controller: controller,
+        ),
+      ),
+    );
+    final bankButton = find.widgetWithText(OutlinedButton, 'Альфа');
+    await tester.tap(bankButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Название банка'), findsOneWidget);
+    expect(tester.getTopLeft(bankButton).dy, lessThan(180));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Название банка'), findsNothing);
+    expect(find.text('Проверка импорта'), findsOneWidget);
+
+    await tester.tap(bankButton);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'вт');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ВТБ'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(OutlinedButton, 'ВТБ'), findsOneWidget);
+    expect(find.text('Название банка'), findsNothing);
+  });
 }
 
 class _MemoryRepository implements WritableCashbackRepository {

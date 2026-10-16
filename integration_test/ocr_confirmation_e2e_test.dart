@@ -79,6 +79,17 @@ void main() {
     await tester.tap(pick);
     await _waitFor(tester, find.text('Завершить проверку'));
     expect(repository.monthlySets, isEmpty);
+    final bankButton = find.widgetWithText(OutlinedButton, 'Ozon Банк');
+    await tester.ensureVisible(bankButton);
+    await tester.pumpAndSettle();
+    await tester.tap(bankButton);
+    await _waitFor(tester, find.text('Название банка'));
+    expect(tester.getTopLeft(bankButton).dy, lessThan(250));
+    await tester.enterText(find.byType(TextField), 'oz');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ozon Банк').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Название банка'), findsNothing);
     final review = find.text('Завершить проверку');
     await tester.ensureVisible(review);
     await tester.pumpAndSettle();
