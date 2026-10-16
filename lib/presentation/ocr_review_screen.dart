@@ -30,23 +30,12 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
   final Map<int, Bank> _bankHints = {};
   final Map<int, String> _bankNames = {};
   final Set<int> _savedIndices = {};
-  final Map<int, int> _monthOverrides = {};
+  final Map<int, CashbackMonth> _monthOverrides = {};
   final Map<int, String> _cardIds = {};
   bool _saving = false;
-  static const _months = [
-    'Январь',
-    'Февраль',
-    'Март',
-    'Апрель',
-    'Май',
-    'Июнь',
-    'Июль',
-    'Август',
-    'Сентябрь',
-    'Октябрь',
-    'Ноябрь',
-    'Декабрь',
-  ];
+
+  CashbackMonth? _periodFor(ParsedScreenshot draft) =>
+      draft.month == null ? null : importPeriod(draft.month!, year: draft.year);
 
   @override
   Widget build(BuildContext context) {
@@ -124,9 +113,10 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
                 document,
                 selectedName ?? selectedBank?.label ?? 'Выбрать банк',
                 detectedBank == null && selectedName == null,
+                result.draft?.bankIsGuess == true && selectedName == null,
                 selectedName != null && selectedBank == null,
                 selectedBank,
-                _monthOverrides[_index] ?? draft.month,
+                _monthOverrides[_index] ?? _periodFor(draft),
               ),
             const SizedBox(height: 24),
             if (_savedIndices.contains(_index))
@@ -184,11 +174,15 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     ParsedScreenshot draft,
     OcrDocument document,
     String bankLabel,
-    bool bankWasGuessed,
+    bool bankNeedsSelection,
+    bool bankIsGuess,
     bool unsupportedBank,
     Bank? selectedBank,
-    int? selectedMonth,
+    CashbackMonth? selectedPeriod,
   ) {
+    final periods = importMonthChoices();
+    final periodAllowed =
+        selectedPeriod == null || periods.contains(selectedPeriod);
     return [
       Text(
         'Обработка: ${(document.elapsedMs / 1000).toStringAsFixed(1)} с · ${document.lines.length} строк',
@@ -204,9 +198,15 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
         icon: const Icon(Icons.account_balance_outlined),
         label: Text(bankLabel, overflow: TextOverflow.ellipsis),
       ),
-      if (bankWasGuessed) ...[
+      if (bankNeedsSelection) ...[
         const SizedBox(height: 8),
         const Text('Банк не распознан. Выберите его перед сохранением.'),
+      ],
+      if (bankIsGuess) ...[
+        const SizedBox(height: 8),
+        const Text(
+          'Банк указан предположительно. Проверьте его перед сохранением.',
+        ),
       ],
       if (unsupportedBank) ...[
         const SizedBox(height: 8),
@@ -215,18 +215,29 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
         ),
       ],
       const SizedBox(height: 16),
-      DropdownButtonFormField<int>(
-        key: ValueKey('review-month-$_index-$selectedMonth'),
-        initialValue: selectedMonth,
+      DropdownButtonFormField<CashbackMonth>(
+        key: ValueKey(
+          'review-month-$_index-${selectedPeriod?.year}-${selectedPeriod?.month}',
+        ),
+        initialValue: periodAllowed ? selectedPeriod : null,
         decoration: const InputDecoration(labelText: 'Месяц'),
         items: [
-          for (var month = 1; month <= 12; month++)
-            DropdownMenuItem(value: month, child: Text(_months[month - 1])),
+          for (final period in periods)
+            DropdownMenuItem(
+              value: period,
+              child: Text(importMonthLabel(period)),
+            ),
         ],
-        onChanged: (month) {
-          if (month != null) setState(() => _monthOverrides[_index] = month);
+        onChanged: (period) {
+          if (period != null) setState(() => _monthOverrides[_index] = period);
         },
       ),
+      if (!periodAllowed) ...[
+        const SizedBox(height: 8),
+        const Text(
+          'Месяц на скриншоте вне доступных трёх месяцев. Проверьте изображение и выберите подходящий период.',
+        ),
+      ],
       if (selectedBank != null &&
           (widget.controller?.cards
                       .where((card) => card.bank == selectedBank)
@@ -320,7 +331,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
           result: result,
           controller: widget.controller!,
           initialBank: bank,
-          initialMonth: _monthOverrides[index],
+          initialPeriod: _monthOverrides[index],
           initialCardId: _cardIds[index],
         ),
       ),
@@ -335,6 +346,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
       return;
     }
     final items = <QuickImportItem>[];
+    final guessedBanks = <String>[];
     for (var index = 0; index < widget.results.length; index++) {
       if (_savedIndices.contains(index)) continue;
       final result = widget.results[index];
@@ -351,10 +363,20 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
         _needsCorrection(index, 'Выберите банк для этого скриншота.');
         return;
       }
+      if (result.draft?.bankIsGuess == true && selectedName == null) {
+        guessedBanks.add('Скриншот ${index + 1}: ${bank.label}');
+      }
       final draft = BankScreenshotParser().parse(document, bankHint: bank);
-      final month = _monthOverrides[index] ?? draft.month;
-      if (month == null) {
+      final period = _monthOverrides[index] ?? _periodFor(draft);
+      if (period == null) {
         _needsCorrection(index, 'Выберите месяц для этого скриншота.');
+        return;
+      }
+      if (!importMonthChoices().contains(period)) {
+        _needsCorrection(
+          index,
+          'Месяц на скриншоте вне доступных трёх месяцев.',
+        );
         return;
       }
       if (draft.categories.isEmpty) {
@@ -380,7 +402,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
         QuickImportItem(
           bank: bank,
           cardId: cardId,
-          period: importPeriod(month, year: draft.year),
+          period: period,
           categories: [
             for (final category in draft.categories)
               CashbackCategory(
@@ -400,6 +422,28 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     if (items.isEmpty) {
       Navigator.of(context).pop(_savedIndices.isNotEmpty);
       return;
+    }
+    if (guessedBanks.isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Проверьте банк'),
+          content: Text(
+            'Банк определён предположительно:\n${guessedBanks.join('\n')}\n\nЕсли банк неверный, выберите его на экране проверки.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Проверить ещё раз'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Банк верный, сохранить'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
     }
     setState(() => _saving = true);
     try {

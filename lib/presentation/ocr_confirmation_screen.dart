@@ -16,13 +16,13 @@ class OcrConfirmationScreen extends StatefulWidget {
     required this.result,
     required this.controller,
     this.initialBank,
-    this.initialMonth,
+    this.initialPeriod,
     this.initialCardId,
   });
   final ScreenshotResult result;
   final CashbackController controller;
   final Bank? initialBank;
-  final int? initialMonth;
+  final CashbackMonth? initialPeriod;
   final String? initialCardId;
 
   @override
@@ -43,9 +43,9 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
             bankHint: widget.initialBank,
           );
     _draft = ImportReviewDraft(parsed, bank: widget.initialBank);
-    if (widget.initialMonth != null) {
-      _draft.month = widget.initialMonth;
-      _draft.year = importPeriod(widget.initialMonth!).year;
+    if (widget.initialPeriod != null) {
+      _draft.month = widget.initialPeriod!.month;
+      _draft.year = widget.initialPeriod!.year;
     }
     _draft.cardId = widget.initialCardId;
   }
@@ -74,13 +74,19 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
       );
       if (reset != true || !mounted) return;
     }
+    final previousPeriod = _draft.month == null
+        ? null
+        : importPeriod(_draft.month!, year: _draft.year);
     final parsed = widget.result.document == null
         ? widget.result.draft!
         : BankScreenshotParser().parse(widget.result.document!, bankHint: bank);
     setState(() {
       _draft = ImportReviewDraft(parsed, bank: bank);
-      _draft.month = widget.initialMonth ?? _draft.month;
-      if (_draft.month != null) _draft.year = importPeriod(_draft.month!).year;
+      final period = previousPeriod ?? widget.initialPeriod;
+      if (period != null) {
+        _draft.month = period.month;
+        _draft.year = period.year;
+      }
     });
   }
 
@@ -120,6 +126,16 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
       return;
     }
     final period = CashbackMonth(_draft.year!, _draft.month!);
+    if (!importMonthChoices().contains(period)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Можно сохранить только предыдущий, текущий или следующий месяц.',
+          ),
+        ),
+      );
+      return;
+    }
     final matchingCards = widget.controller.cards
         .where((item) => item.bank == _draft.bank)
         .toList();
@@ -153,7 +169,7 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${_draft.bank!.label}${matchingCards.length > 1 ? ' · ${card?.name ?? ''}' : ''} · месяц ${period.month}',
+                '${_draft.bank!.label}${matchingCards.length > 1 ? ' · ${card?.name ?? ''}' : ''} · ${importMonthLabel(period)}',
               ),
               const SizedBox(height: 10),
               Text('Новые выбранные строки: ${incoming.length}'),
@@ -287,26 +303,45 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
               ),
             ],
             const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              key: ValueKey('month-${_draft.month}'),
-              initialValue: _draft.month,
+            DropdownButtonFormField<CashbackMonth>(
+              key: ValueKey('month-${_draft.year}-${_draft.month}'),
+              initialValue: _draft.month == null || _draft.year == null
+                  ? null
+                  : importMonthChoices()
+                        .where(
+                          (period) =>
+                              period.month == _draft.month &&
+                              period.year == _draft.year,
+                        )
+                        .firstOrNull,
               decoration: const InputDecoration(
                 labelText: 'Месяц',
                 border: OutlineInputBorder(),
               ),
               items: [
-                for (var month = 1; month <= 12; month++)
-                  DropdownMenuItem(value: month, child: Text('$month')),
+                for (final period in importMonthChoices())
+                  DropdownMenuItem(
+                    value: period,
+                    child: Text(importMonthLabel(period)),
+                  ),
               ],
               onChanged: _saving
                   ? null
                   : (value) => setState(() {
-                      _draft.month = value;
-                      _draft.year = value == null
-                          ? null
-                          : importPeriod(value).year;
+                      _draft.month = value?.month;
+                      _draft.year = value?.year;
                     }),
             ),
+            if (_draft.month != null &&
+                _draft.year != null &&
+                !importMonthChoices().contains(
+                  CashbackMonth(_draft.year!, _draft.month!),
+                )) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Месяц на скриншоте вне доступных трёх месяцев. Выберите подходящий период.',
+              ),
+            ],
             const SizedBox(height: 20),
             Text(
               'Категории · отмечено ${_draft.selectedRows.length}',

@@ -29,7 +29,13 @@ class BankScreenshotParser {
     final lines = document.lines.where((l) => l.top >= .06).toList()
       ..sort((a, b) => a.top.compareTo(b.top));
     final text = lines.map((l) => l.text).join('\n').toLowerCase();
-    final bank = bankHint ?? _detectBank(text);
+    final detectedBank = _detectBank(text);
+    final guessedBank = detectedBank == null && _looksLikeCashback(text)
+        ? _guessBank(text)
+        : null;
+    var bank = bankHint ?? detectedBank ?? guessedBank;
+    var bankIsGuess =
+        bankHint == null && detectedBank == null && guessedBank != null;
     final warnings = <String>[];
     int? month, year;
     final monthLines = lines.where(
@@ -50,7 +56,6 @@ class BankScreenshotParser {
     if (month == null) {
       warnings.add('Месяц не определён: выберите его вручную.');
     }
-    if (bank == null) warnings.add('Банк не определён: выберите его вручную.');
     final choiceScreen =
         text.contains('выбираете') ||
         text.contains('какую еще') ||
@@ -202,10 +207,22 @@ class BankScreenshotParser {
     }
     if (categories.isEmpty) {
       warnings.add('Категории не найдены. Можно внести их вручную.');
+      if (bankIsGuess) {
+        bank = null;
+        bankIsGuess = false;
+      }
+    }
+    if (bankIsGuess) {
+      warnings.add(
+        'Банк определён предположительно. Проверьте его перед сохранением.',
+      );
+    } else if (bank == null) {
+      warnings.add('Банк не определён: выберите его вручную.');
     }
     warnings.add('Проверьте категории и проценты перед использованием.');
     return ParsedScreenshot(
       bank: bank,
+      bankIsGuess: bankIsGuess,
       month: month,
       year: year,
       categories: categories,
@@ -236,5 +253,30 @@ class BankScreenshotParser {
     if (text.contains('втб')) return Bank.vtb;
     if (text.contains('альфа')) return Bank.alfa;
     return null;
+  }
+
+  bool _looksLikeCashback(String text) =>
+      RegExp(
+        r'категори|к[еэ]шб[еэ]к|выгод|бонус',
+        caseSensitive: false,
+      ).hasMatch(text) &&
+      _rate.hasMatch(text);
+
+  Bank _guessBank(String text) {
+    if (text.contains('ваши категории') || text.contains('история бонусов')) {
+      return Bank.sber;
+    }
+    if (text.contains('ваша выгода') || text.contains('за все покупки')) {
+      return Bank.alfa;
+    }
+    if (text.contains('выбираете') || text.contains('какую ещё')) {
+      return Bank.tbank;
+    }
+    if (text.contains('категории на')) return Bank.ozon;
+    if (text.contains('больше категорий') ||
+        RegExp(r'август\s+сентябрь\s+октябрь').hasMatch(text)) {
+      return Bank.vtb;
+    }
+    return Bank.alfa;
   }
 }

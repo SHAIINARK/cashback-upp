@@ -12,3 +12,27 @@ CashbackMonth importPeriod(int month, {int? year, DateTime? now}) {
   }
   return CashbackMonth(resolvedYear, month);
 }
+
+List<CashbackMonth> importMonthChoices({DateTime? now}) {
+  final date = now ?? DateTime.now();
+  final current = CashbackMonth(date.year, date.month);
+  return [current.shift(-1), current, current.shift(1)];
+}
+
+const importMonthNames = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+];
+
+String importMonthLabel(CashbackMonth period) =>
+    importMonthNames[period.month - 1];

@@ -410,17 +410,25 @@ class _CategoryDialogState extends State<_CategoryDialog> {
           children: [
             Text('${widget.card.bank.label} · ${widget.card.name}'),
             const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              initialValue: _month,
+            DropdownButtonFormField<CashbackMonth>(
+              initialValue: CashbackMonth(_year, _month),
               decoration: const InputDecoration(labelText: 'Месяц'),
               items: [
-                for (var m = 1; m <= 12; m++)
-                  DropdownMenuItem(value: m, child: Text('$m')),
+                for (final period in [
+                  ...importMonthChoices(),
+                  if (widget.category != null &&
+                      !importMonthChoices().contains(widget.period))
+                    widget.period,
+                ])
+                  DropdownMenuItem(
+                    value: period,
+                    child: Text(importMonthLabel(period)),
+                  ),
               ],
               onChanged: widget.category == null
                   ? (value) {
-                      _month = value!;
-                      _year = importPeriod(_month).year;
+                      _month = value!.month;
+                      _year = value.year;
                     }
                   : null,
             ),

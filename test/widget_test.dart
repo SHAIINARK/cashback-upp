@@ -7,9 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 
 void main() {
-  testWidgets('Empty user data and navigation to import review', (
-    tester,
-  ) async {
+  testWidgets('Empty user data and navigation to import', (tester) async {
     final controller = CashbackController(
       EmptyCashbackRepository(),
       initialMonth: CashbackMonth(2026, 12),
@@ -32,14 +30,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Импорт'));
     await tester.pumpAndSettle();
-    final review = find.text('Открыть проверку импорта');
-    await tester.ensureVisible(review);
-    await tester.pumpAndSettle();
-    await tester.tap(review);
-    await tester.pumpAndSettle();
-    expect(find.text('Пока нечего проверять'), findsOneWidget);
-    await tester.tap(find.text('Вернуться к импорту'));
-    await tester.pumpAndSettle();
+    expect(find.text('Открыть проверку импорта'), findsNothing);
+    expect(find.text('Выбрать скриншоты'), findsOneWidget);
     await tester.tap(find.text('Настройки').last);
     await tester.pumpAndSettle();
     expect(find.text('Без доступа к банку'), findsOneWidget);

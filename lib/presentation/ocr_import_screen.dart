@@ -228,18 +228,6 @@ class _ImportScreenState extends State<ImportScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        OutlinedButton.icon(
-          onPressed: _controller.busy
-              ? null
-              : () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const ImportReviewScreen(),
-                  ),
-                ),
-          icon: const Icon(Icons.fact_check_outlined),
-          label: const Text('Открыть проверку импорта'),
-        ),
       ],
     ),
   );

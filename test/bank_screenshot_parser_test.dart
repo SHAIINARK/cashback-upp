@@ -19,6 +19,28 @@ ParsedScreenshot parse(List<OcrLine> lines, {Bank? bank}) =>
     );
 
 void main() {
+  test('Cashback screen without bank name gets a visible guess', () {
+    final result = parse([
+      line('Категории на октябрь', .2),
+      line('5% Аптеки', .4),
+    ]);
+    expect(result.bank, Bank.ozon);
+    expect(result.bankIsGuess, isTrue);
+    expect(
+      result.warnings.any((warning) => warning.contains('предположительно')),
+      isTrue,
+    );
+  });
+
+  test('Unrelated text and percentages do not get a bank', () {
+    final result = parse([
+      line('Расписание кинотеатра', .2),
+      line('Скидка 10% на билеты', .4),
+    ]);
+    expect(result.bank, isNull);
+    expect(result.bankIsGuess, isFalse);
+  });
+
   test('Symbols with a single OCR letter are not category names', () {
     final result = parse([
       line('Ваши категории в сентябре', .33),

@@ -14,6 +14,15 @@ void main() {
     expect(importPeriod(12, now: DateTime(2026, 1)), CashbackMonth(2025, 12));
   });
 
+  test('Only adjacent months are offered across the year boundary', () {
+    expect(importMonthChoices(now: DateTime(2026, 12)), [
+      CashbackMonth(2026, 11),
+      CashbackMonth(2026, 12),
+      CashbackMonth(2027, 1),
+    ]);
+    expect(importMonthLabel(CashbackMonth(2027, 1)), 'Январь');
+  });
+
   test(
     'One-tap import creates a bank card and preserves prior data on conflict',
     () async {

@@ -51,11 +51,13 @@ class ParsedScreenshot {
     this.bank,
     this.month,
     this.year,
+    this.bankIsGuess = false,
     required Iterable<ParsedCategory> categories,
     required Iterable<String> warnings,
   }) : categories = List.unmodifiable(categories),
        warnings = List.unmodifiable(warnings);
   final Bank? bank;
+  final bool bankIsGuess;
   final int? month, year;
   final List<ParsedCategory> categories;
   final List<String> warnings;
