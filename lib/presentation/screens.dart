@@ -156,26 +156,35 @@ class _HomeCashbackView extends StatefulWidget {
 class _HomeCashbackViewState extends State<_HomeCashbackView> {
   bool _byCard = false;
   String? _cardId;
+  final TextEditingController _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final sets = widget.controller.selectedSets;
     final cards = widget.controller.selectedCards;
-    final usable =
-        sets
-            .expand((set) => set.categories)
-            .where((category) => category.rewardType == RewardType.rubles)
-            .toList()
-          ..sort((a, b) => b.percent.compareTo(a.percent));
     final cardById = {
       for (final card in widget.controller.cards) card.id: card,
     };
+    final query = _search.text.trim().toLowerCase();
+    bool matches(CashbackCategory category, BankCard? card) =>
+        query.isEmpty ||
+        category.originalName.toLowerCase().contains(query) ||
+        category.notes.toLowerCase().contains(query) ||
+        (card?.bank.label.toLowerCase().contains(query) ?? false) ||
+        (card?.name.toLowerCase().contains(query) ?? false);
     final bankCategories = [
       for (final set in sets)
         for (final category in set.categories.where(
           (item) => item.rewardType == RewardType.rubles,
         ))
-          (category: category, card: cardById[set.cardId]),
+          if (matches(category, cardById[set.cardId]))
+            (category: category, card: cardById[set.cardId]),
     ]..sort((a, b) => b.category.percent.compareTo(a.category.percent));
     final selectedCard = cards.any((card) => card.id == _cardId)
         ? _cardId
@@ -183,10 +192,31 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
     final cardSet = selectedCard == null
         ? null
         : sets.where((set) => set.cardId == selectedCard).firstOrNull;
-    final otherSets = sets
-        .expand((set) => set.categories)
-        .where((category) => category.rewardType != RewardType.rubles)
-        .toList();
+    final otherCategories = [
+      for (final set in sets)
+        for (final category in set.categories)
+          if (category.rewardType != RewardType.rubles &&
+              matches(category, cardById[set.cardId]))
+            (category: category, card: cardById[set.cardId]),
+    ];
+    final cardRubles =
+        cardSet?.categories
+            .where(
+              (item) =>
+                  item.rewardType == RewardType.rubles &&
+                  matches(item, cardById[selectedCard]),
+            )
+            .toList() ??
+        [];
+    final cardBonuses =
+        cardSet?.categories
+            .where(
+              (item) =>
+                  item.rewardType != RewardType.rubles &&
+                  matches(item, cardById[selectedCard]),
+            )
+            .toList() ??
+        [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -209,6 +239,25 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
               setState(() => _byCard = values.first),
         ),
         const SizedBox(height: 16),
+        if (sets.isNotEmpty) ...[
+          TextField(
+            controller: _search,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Найти категорию',
+              hintText: 'Название, банк или карта',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: query.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Очистить поиск',
+                      onPressed: () => setState(_search.clear),
+                      icon: const Icon(Icons.close),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         if (_byCard && cards.isNotEmpty) ...[
           DropdownButtonFormField<String>(
             initialValue: selectedCard,
@@ -227,33 +276,23 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
           const SizedBox(height: 12),
           if (cardSet == null || cardSet.categories.isEmpty)
             const _CompactEmpty(message: 'Для этой карты пока нет категорий.')
-          else if (cardSet.categories.any(
-            (item) => item.rewardType == RewardType.rubles,
-          ))
+          else if (cardRubles.isEmpty && cardBonuses.isEmpty)
+            const _CompactEmpty(message: 'По вашему запросу ничего не найдено.')
+          else if (cardRubles.isNotEmpty)
             _CategoryList(
-              categories: [
-                ...cardSet.categories.where(
-                  (item) => item.rewardType == RewardType.rubles,
-                ),
-              ]..sort((a, b) => b.percent.compareTo(a.percent)),
+              categories: cardRubles
+                ..sort((a, b) => b.percent.compareTo(a.percent)),
             ),
-          if (cardSet != null &&
-              cardSet.categories.any(
-                (item) => item.rewardType != RewardType.rubles,
-              )) ...[
+          if (cardBonuses.isNotEmpty) ...[
             const SizedBox(height: 18),
             Text(
               'Бонусы и баллы',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
-            _CategoryList(
-              categories: cardSet.categories
-                  .where((item) => item.rewardType != RewardType.rubles)
-                  .toList(),
-            ),
+            _CategoryList(categories: cardBonuses),
           ],
-        ] else if (_byCard || usable.isEmpty) ...[
+        ] else if (_byCard || sets.isEmpty) ...[
           _CompactEmpty(
             message: _byCard
                 ? 'В этом месяце нет добавленных карт.'
@@ -264,20 +303,25 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
               label: const Text('Добавить скриншоты'),
             ),
           ),
-        ] else ...[
+        ] else if (bankCategories.isNotEmpty) ...[
           _CategoryList.entries(
             entries: bankCategories,
             cards: widget.controller.cards,
           ),
+        ] else if (otherCategories.isEmpty) ...[
+          const _CompactEmpty(message: 'По вашему запросу ничего не найдено.'),
         ],
-        if (otherSets.isNotEmpty) ...[
+        if (!_byCard && otherCategories.isNotEmpty) ...[
           const SizedBox(height: 18),
           Text(
             'Бонусы и баллы',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
-          _CategoryList(categories: otherSets),
+          _CategoryList.entries(
+            entries: otherCategories,
+            cards: widget.controller.cards,
+          ),
         ],
       ],
     );
@@ -363,7 +407,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Text('Кэшбэк рядом', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            const Text('Версия 0.5.3 · быстрый импорт'),
+            const Text('Версия 0.6.0 · поиск категорий'),
             const Divider(height: 32),
             const _SettingRow(
               icon: Icons.language,

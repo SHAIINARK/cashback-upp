@@ -94,6 +94,88 @@ void main() {
     expect(find.text('Аптеки'), findsOneWidget);
     expect(repository.monthlySets.single.period, CashbackMonth(2026, 10));
   });
+
+  testWidgets(
+    'Home search keeps banks and bonuses distinct for selected month',
+    (tester) async {
+      final repository = _MemoryRepository();
+      final alfa = BankCard(
+        id: 'alfa',
+        bank: Bank.alfa,
+        name: 'Дебетовая',
+        rewardType: RewardType.rubles,
+      );
+      final sber = BankCard(
+        id: 'sber',
+        bank: Bank.sber,
+        name: 'Основная',
+        rewardType: RewardType.sberSpasibo,
+      );
+      await repository.saveCard(alfa);
+      await repository.saveCard(sber);
+      await repository.saveSet(
+        MonthlyCashbackSet(
+          cardId: alfa.id,
+          period: CashbackMonth(2026, 10),
+          confirmedAt: DateTime.utc(2026, 10, 1),
+          categories: [
+            CashbackCategory(
+              id: 'a1',
+              originalName: 'Аптеки',
+              percent: 5,
+              rewardType: RewardType.rubles,
+            ),
+          ],
+        ),
+      );
+      await repository.saveSet(
+        MonthlyCashbackSet(
+          cardId: sber.id,
+          period: CashbackMonth(2026, 10),
+          confirmedAt: DateTime.utc(2026, 10, 1),
+          categories: [
+            CashbackCategory(
+              id: 's1',
+              originalName: 'Аптеки',
+              percent: 7,
+              rewardType: RewardType.sberSpasibo,
+            ),
+          ],
+        ),
+      );
+      final controller = CashbackController(
+        repository,
+        initialMonth: CashbackMonth(2026, 10),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(CashbackApp(controller: controller));
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Найти категорию'),
+        'аптеки',
+      );
+      await tester.pump();
+      expect(find.text('Аптеки'), findsNWidgets(2));
+      expect(find.textContaining('Альфа · Дебетовая'), findsOneWidget);
+      expect(find.textContaining('Сбер · Основная'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Найти категорию'),
+        'сбер',
+      );
+      await tester.pump();
+      expect(find.text('Аптеки'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Найти категорию'),
+        'нет',
+      );
+      await tester.pump();
+      expect(find.text('По вашему запросу ничего не найдено.'), findsOneWidget);
+      await tester.tap(find.byTooltip('Очистить поиск'));
+      await tester.pump();
+      await tester.tap(find.text('Следующий'));
+      await tester.pump();
+      expect(find.text('Аптеки'), findsNothing);
+    },
+  );
 }
 
 class _MemoryRepository implements WritableCashbackRepository {
