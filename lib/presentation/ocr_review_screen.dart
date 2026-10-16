@@ -41,6 +41,9 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
   bool _bankPickerOpen = false;
   bool _keyboardWasVisible = false;
   bool _saving = false;
+  OcrDocument? _cachedDocument;
+  Bank? _cachedBank;
+  ParsedScreenshot? _cachedDraft;
 
   @override
   void initState() {
@@ -105,15 +108,25 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
     final selectedBank = selectedName == null
         ? _bankHints[_index] ?? detectedBank
         : Bank.values.where((bank) => bank.label == selectedName).firstOrNull;
-    final draft = document == null
-        ? null
-        : BankScreenshotParser().parse(document, bankHint: selectedBank);
+    ParsedScreenshot? draft;
+    if (document != null) {
+      if (!identical(document, _cachedDocument) || selectedBank != _cachedBank) {
+        _cachedDocument = document;
+        _cachedBank = selectedBank;
+        _cachedDraft = BankScreenshotParser().parse(
+          document,
+          bankHint: selectedBank,
+        );
+      }
+      draft = _cachedDraft;
+    }
     return PopScope(
       canPop: !_bankPickerOpen,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _bankPickerOpen) _closeBankPicker();
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(title: const Text('Проверка импорта')),
         body: SafeArea(
           child: PageBody(
