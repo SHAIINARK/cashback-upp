@@ -63,6 +63,10 @@ void main() {
           reopened.monthlySets.single.categories.single.notes,
           'Только в приложении',
         );
+        expect(
+          reopened.learnedCategorySuggestions,
+          contains('Такси и каршеринг'),
+        );
       } finally {
         await directory.delete(recursive: true);
       }
@@ -97,4 +101,32 @@ void main() {
       await directory.delete(recursive: true);
     }
   });
+
+  test(
+    'Schema 2 remains readable and gains local category suggestions',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'cashback-storage-migration-test-',
+      );
+      try {
+        final file = File(
+          '${directory.path}${Platform.pathSeparator}cashback-data.json',
+        );
+        await file.writeAsString(
+          jsonEncode({'schema': 2, 'cards': [], 'sets': []}),
+        );
+        final store = LocalCashbackRepository(directory: directory);
+        await store.load();
+        expect(store.learnedCategorySuggestions, isEmpty);
+        await store.rememberCategorySuggestions(['Аптеки']);
+
+        final reopened = LocalCashbackRepository(directory: directory);
+        await reopened.load();
+        expect(reopened.learnedCategorySuggestions, ['Аптеки']);
+        expect(jsonDecode(await file.readAsString())['schema'], 3);
+      } finally {
+        await directory.delete(recursive: true);
+      }
+    },
+  );
 }

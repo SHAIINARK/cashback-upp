@@ -17,6 +17,10 @@ class CashbackController extends ChangeNotifier {
   List<BankCard> get cards => List.unmodifiable(repository.cards);
   List<MonthlyCashbackSet> get allSets =>
       List.unmodifiable(repository.monthlySets);
+  List<String> get learnedCategorySuggestions =>
+      repository is CategorySuggestionStore
+      ? (repository as CategorySuggestionStore).learnedCategorySuggestions
+      : const [];
   List<MonthlyCashbackSet> get selectedSets => List.unmodifiable(
     repository.monthlySets.where((set) => set.period == _month),
   );
@@ -35,6 +39,15 @@ class CashbackController extends ChangeNotifier {
 
   WritableCashbackRepository get _writable =>
       repository as WritableCashbackRepository;
+
+  Future<void> rememberCategorySuggestions(Iterable<String> values) async {
+    final store = repository;
+    if (store is! CategorySuggestionStore) return;
+    await (store as CategorySuggestionStore).rememberCategorySuggestions(
+      values,
+    );
+    notifyListeners();
+  }
 
   String newId() =>
       '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';

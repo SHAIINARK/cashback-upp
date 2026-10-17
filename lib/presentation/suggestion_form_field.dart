@@ -17,6 +17,7 @@ class SuggestionFormField extends StatefulWidget {
     this.prefixIcon,
     this.suffixIcon,
     this.allowCustomEntry = true,
+    this.showOnEmpty = true,
     this.validator,
     this.onChanged,
     this.onSuggestionSelected,
@@ -33,6 +34,9 @@ class SuggestionFormField extends StatefulWidget {
   final Widget? prefixIcon;
   final Widget? suffixIcon;
   final bool allowCustomEntry;
+
+  /// Open the saved options when the field is focused before typing.
+  final bool showOnEmpty;
   final String? Function(String?)? validator;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSuggestionSelected;
@@ -47,6 +51,11 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
   late final FocusNode _focus = widget.focusNode ?? FocusNode();
   bool _ownsFocus = false;
   OverlayEntry? _overlay;
+
+  double get _keyboardInset {
+    final view = View.of(context);
+    return view.viewInsets.bottom / view.devicePixelRatio;
+  }
 
   @override
   void initState() {
@@ -69,7 +78,7 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
   void didChangeMetrics() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focus.hasFocus) return;
-      if (MediaQuery.viewInsetsOf(context).bottom == 0) {
+      if (_keyboardInset == 0) {
         _removeOverlay();
       } else if (_needsSuggestionPanel(widget.controller.text)) {
         _showOverlay();
@@ -98,7 +107,7 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
       if (mounted &&
           _focus.hasFocus &&
           _needsSuggestionPanel(widget.controller.text) &&
-          MediaQuery.viewInsetsOf(context).bottom > 0) {
+          _keyboardInset > 0) {
         _showOverlay();
       }
     });
@@ -123,12 +132,13 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
       .where((item) => item.trim().isNotEmpty)
       .where((item) => item.toLowerCase().contains(query.toLowerCase()))
       .toSet()
-      .take(12)
       .toList();
 
   bool _needsSuggestionPanel(String value) {
     final query = value.trim();
-    if (query.isEmpty) return false;
+    if (query.isEmpty) {
+      return widget.showOnEmpty && widget.suggestions.isNotEmpty;
+    }
     final matches = _matches(query);
     final exact = widget.suggestions.any(
       (item) => item.trim().toLowerCase() == query.toLowerCase(),
@@ -174,7 +184,11 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
             child: Column(
               children: [
                 ListTile(
-                  title: Text('Подсказки для «$query»'),
+                  title: Text(
+                    query.isEmpty
+                        ? 'Выберите вариант'
+                        : 'Подсказки для «$query»',
+                  ),
                   trailing: IconButton(
                     tooltip: 'Скрыть подсказки',
                     onPressed: _removeOverlay,
@@ -238,7 +252,7 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
         widget.onChanged?.call(value);
         if (_needsSuggestionPanel(value) &&
             _focus.hasFocus &&
-            MediaQuery.viewInsetsOf(context).bottom > 0) {
+            _keyboardInset > 0) {
           _showOverlay();
         } else {
           _removeOverlay();
@@ -247,7 +261,7 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
       },
       onTap: () {
         if (_needsSuggestionPanel(widget.controller.text) &&
-            MediaQuery.viewInsetsOf(context).bottom > 0) {
+            _keyboardInset > 0) {
           _showOverlay();
         }
       },

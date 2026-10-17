@@ -7,7 +7,8 @@ import '../domain/cashback_repository.dart';
 import '../domain/models.dart';
 
 /// Versioned private file. Every change is written before memory is updated.
-class LocalCashbackRepository implements WritableCashbackRepository {
+class LocalCashbackRepository
+    implements WritableCashbackRepository, CategorySuggestionStore {
   LocalCashbackRepository({Directory? directory}) {
     _directory = directory;
   }
@@ -15,6 +16,7 @@ class LocalCashbackRepository implements WritableCashbackRepository {
   Directory? _directory;
   List<BankCard> _cards = [];
   List<MonthlyCashbackSet> _sets = [];
+  List<String> _learnedCategorySuggestions = [];
   Future<void> _pending = Future.value();
   bool _loaded = false;
 
@@ -22,6 +24,9 @@ class LocalCashbackRepository implements WritableCashbackRepository {
   List<BankCard> get cards => List.unmodifiable(_cards);
   @override
   List<MonthlyCashbackSet> get monthlySets => List.unmodifiable(_sets);
+  @override
+  List<String> get learnedCategorySuggestions =>
+      List.unmodifiable(_learnedCategorySuggestions);
 
   Future<File> get _file async {
     final directory = _directory ??= await getApplicationSupportDirectory();
@@ -38,7 +43,9 @@ class LocalCashbackRepository implements WritableCashbackRepository {
     }
     final decoded = jsonDecode(await file.readAsString());
     if (decoded is! Map<String, dynamic> ||
-        (decoded['schema'] != 1 && decoded['schema'] != 2)) {
+        (decoded['schema'] != 1 &&
+            decoded['schema'] != 2 &&
+            decoded['schema'] != 3)) {
       throw const FormatException(
         'Неподдерживаемая версия сохранённых данных.',
       );
@@ -61,23 +68,49 @@ class LocalCashbackRepository implements WritableCashbackRepository {
     }
     _cards = cards;
     _sets = sets;
+    final suggestions = decoded['categorySuggestions'];
+    _learnedCategorySuggestions = suggestions is List
+        ? suggestions
+              .whereType<String>()
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toSet()
+              .toList()
+        : [];
     _loaded = true;
   }
 
   Future<void> _change(
     List<BankCard> Function(List<BankCard>) updateCards,
-    List<MonthlyCashbackSet> Function(List<MonthlyCashbackSet>) updateSets,
-  ) {
+    List<MonthlyCashbackSet> Function(List<MonthlyCashbackSet>) updateSets, [
+    List<String> Function(List<String>)? updateSuggestions,
+  ]) {
     final operation = _pending.then((_) async {
       if (!_loaded) throw StateError('Данные ещё не загружены.');
       final cards = updateCards(List.of(_cards));
       final sets = updateSets(List.of(_sets));
+      final suggestions = (updateSuggestions ?? (values) => values)(
+        List.of(_learnedCategorySuggestions),
+      );
+      final learnedNames = suggestions
+          .map((value) => value.toLowerCase())
+          .toSet();
+      for (final category in sets.expand((set) => set.categories)) {
+        final name = category.originalName.trim();
+        if (name.isNotEmpty && learnedNames.add(name.toLowerCase())) {
+          suggestions.add(name);
+        }
+      }
+      if (suggestions.length > 500) {
+        suggestions.removeRange(0, suggestions.length - 500);
+      }
       final file = await _file;
       final temporary = File('${file.path}.tmp');
       final payload = jsonEncode({
-        'schema': 2,
+        'schema': 3,
         'cards': cards.map(_encodeCard).toList(),
         'sets': sets.map(_encodeSet).toList(),
+        'categorySuggestions': suggestions,
       });
       try {
         await temporary.writeAsString(payload, flush: true);
@@ -90,6 +123,7 @@ class LocalCashbackRepository implements WritableCashbackRepository {
       }
       _cards = cards;
       _sets = sets;
+      _learnedCategorySuggestions = suggestions;
     });
     _pending = operation.catchError((Object _) {});
     return operation;
@@ -159,6 +193,25 @@ class LocalCashbackRepository implements WritableCashbackRepository {
     (sets) => sets
       ..removeWhere((item) => item.cardId == cardId && item.period == period),
   );
+
+  @override
+  Future<void> rememberCategorySuggestions(Iterable<String> values) =>
+      _change((cards) => cards, (sets) => sets, (saved) {
+        final merged = [...saved];
+        final known = saved.map((value) => value.toLowerCase()).toSet();
+        for (final raw in values) {
+          final value = raw.trim();
+          if (value.isEmpty ||
+              value.length > 100 ||
+              value.contains(RegExp(r'[\x00-\x1f\x7f]'))) {
+            continue;
+          }
+          if (known.add(value.toLowerCase())) merged.add(value);
+        }
+        return merged.length <= 500
+            ? merged
+            : merged.sublist(merged.length - 500);
+      });
 
   Map<String, Object?> _encodeCard(BankCard card) => {
     'id': card.id,

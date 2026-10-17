@@ -260,6 +260,7 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
             label: 'Найти категорию',
             hint: 'Название, банк или карта',
             allowCustomEntry: false,
+            showOnEmpty: false,
             prefixIcon: const Icon(Icons.search),
             suffixIcon: query.isEmpty
                 ? null

@@ -177,6 +177,7 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
         defaultReward: reward,
         defaultCustomRewardName: card?.customRewardName ?? '',
         categorySuggestions: categorySuggestions([
+          ...widget.controller.learnedCategorySuggestions,
           ..._draft.rows.map((row) => row.name),
           ...widget.controller.allSets.expand(
             (set) => set.categories.map((category) => category.originalName),
@@ -543,8 +544,12 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
   );
   late final _notes = TextEditingController(text: widget.row?.notes ?? '');
   late RewardType _reward = widget.row?.rewardType ?? widget.defaultReward;
-  late final _customReward = TextEditingController(
-    text: widget.row?.customRewardName ?? widget.defaultCustomRewardName,
+  late final _rewardInput = TextEditingController(
+    text:
+        widget.row?.rewardLabel ??
+        (widget.defaultReward == RewardType.custom
+            ? widget.defaultCustomRewardName
+            : widget.defaultReward.label),
   );
   late bool _upTo = widget.row?.isUpTo ?? false;
 
@@ -553,7 +558,7 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
     _name.dispose();
     _rate.dispose();
     _notes.dispose();
-    _customReward.dispose();
+    _rewardInput.dispose();
     super.dispose();
   }
 
@@ -593,27 +598,23 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
                     : null;
               },
             ),
-            DropdownButtonFormField<RewardType>(
-              initialValue: _reward,
-              decoration: const InputDecoration(labelText: 'Вознаграждение'),
-              items: [
-                for (final type in RewardType.values)
-                  DropdownMenuItem(value: type, child: Text(type.label)),
-              ],
-              onChanged: (value) => setState(() => _reward = value!),
+            SuggestionFormField(
+              controller: _rewardInput,
+              suggestions: {
+                RewardType.rubles.label,
+                RewardType.otherPoints.label,
+                RewardType.sberSpasibo.label,
+                ...widget.rewardSuggestions,
+              }.toList(),
+              label: 'Вознаграждение',
+              hint: 'Выберите вариант или введите свой',
+              maxLength: 60,
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Укажите вознаграждение'
+                  : null,
+              onChanged: _updateReward,
+              onSuggestionSelected: _updateReward,
             ),
-            if (_reward == RewardType.custom) ...[
-              SuggestionFormField(
-                controller: _customReward,
-                suggestions: widget.rewardSuggestions,
-                label: 'Название вознаграждения',
-                hint: 'Например, мили или баллы банка',
-                maxLength: 60,
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Введите название вознаграждения'
-                    : null,
-              ),
-            ],
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('До указанного процента'),
@@ -647,7 +648,7 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
               percent: double.parse(_rate.text.replaceAll(',', '.')),
               rewardType: _reward,
               customRewardName: _reward == RewardType.custom
-                  ? _customReward.text.trim()
+                  ? _rewardInput.text.trim()
                   : '',
               isUpTo: _upTo,
               notes: _notes.text.trim(),
@@ -660,4 +661,15 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
       ),
     ],
   );
+
+  void _updateReward(String value) {
+    final normalized = value.trim().toLowerCase();
+    final known = RewardType.values
+        .where((type) => type != RewardType.custom)
+        .where((type) => type.label.toLowerCase() == normalized)
+        .firstOrNull;
+    setState(() {
+      _reward = known ?? RewardType.custom;
+    });
+  }
 }

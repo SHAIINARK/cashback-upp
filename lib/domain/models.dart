@@ -57,8 +57,8 @@ class Bank {
 
 enum RewardType {
   rubles('Рубли'),
-  sberSpasibo('Бонусы Спасибо'),
-  otherPoints('Другие баллы'),
+  sberSpasibo('Сбер Спасибо'),
+  otherPoints('Бонусы'),
   custom('Своё название');
 
   const RewardType(this.label);

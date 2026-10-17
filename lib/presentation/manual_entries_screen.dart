@@ -89,11 +89,12 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
             card: card,
             period: period ?? widget.controller.month,
             category: category,
-            categorySuggestions: categorySuggestions(
-              widget.controller.allSets
+            categorySuggestions: categorySuggestions([
+              ...widget.controller.learnedCategorySuggestions,
+              ...widget.controller.allSets
                   .expand((set) => set.categories)
                   .map((item) => item.originalName),
-            ),
+            ]),
             rewardSuggestions: widget.controller.allSets
                 .expand((set) => set.categories)
                 .map((item) => item.rewardLabel)

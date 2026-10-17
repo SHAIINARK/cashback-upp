@@ -17,3 +17,9 @@ abstract interface class WritableCashbackRepository
   });
   Future<void> deleteSet(String cardId, CashbackMonth period);
 }
+
+/// Optional local-only store for category labels recognized from reviewed imports.
+abstract interface class CategorySuggestionStore {
+  List<String> get learnedCategorySuggestions;
+  Future<void> rememberCategorySuggestions(Iterable<String> values);
+}

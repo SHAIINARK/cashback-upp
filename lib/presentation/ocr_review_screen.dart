@@ -452,6 +452,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
       defaultCustomRewardName:
           row?.customRewardName ?? card?.customRewardName ?? '',
       categorySuggestions: categorySuggestions([
+        ...?controller?.learnedCategorySuggestions,
         ...draft.rows.map((item) => item.name),
         ...savedCategories.map((item) => item.originalName),
         ...?controller?.allSets.expand(
