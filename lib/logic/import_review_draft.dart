@@ -8,6 +8,7 @@ class ReviewRow {
     required this.name,
     required this.percent,
     required this.rewardType,
+    this.customRewardName = '',
     this.isUpTo = false,
     this.notes = '',
     this.selected = false,
@@ -16,15 +17,19 @@ class ReviewRow {
   String name;
   double percent;
   RewardType rewardType;
+  String customRewardName;
   bool isUpTo;
   String notes;
   bool selected;
+  String get rewardLabel =>
+      customRewardName.trim().isEmpty ? rewardType.label : customRewardName;
 
   CashbackCategory toCategory(String id) => CashbackCategory(
     id: id,
     originalName: name.trim(),
     percent: percent,
     rewardType: rewardType,
+    customRewardName: customRewardName,
     isUpTo: isUpTo,
     notes: notes.trim(),
   );

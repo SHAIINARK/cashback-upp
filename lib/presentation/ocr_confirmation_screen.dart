@@ -152,6 +152,28 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
       builder: (_) => _ReviewRowDialog(
         row: index == null ? null : _draft.rows[index],
         defaultReward: reward,
+        defaultCustomRewardName: card?.customRewardName ?? '',
+        categorySuggestions: {
+          ..._draft.rows.map((row) => row.name),
+          ...widget.controller.allSets
+              .where((set) => set.cardId == card?.id)
+              .expand((set) => set.categories)
+              .map((category) => category.originalName),
+        }.toList(),
+        notesSuggestions: widget.controller.allSets
+            .where((set) => set.cardId == card?.id)
+            .expand((set) => set.categories)
+            .map((category) => category.notes)
+            .where((note) => note.trim().isNotEmpty)
+            .toSet()
+            .toList(),
+        rewardSuggestions: {
+          ..._draft.rows.map((row) => row.rewardLabel),
+          ...widget.controller.allSets
+              .where((set) => set.cardId == card?.id)
+              .expand((set) => set.categories)
+              .map((category) => category.rewardLabel),
+        }.where((label) => label.isNotEmpty).toList(),
       ),
     );
     if (result == null || !mounted) return;
@@ -424,7 +446,7 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
                               ),
                         title: Text(_draft.rows[index].name),
                         subtitle: Text(
-                          '${_draft.rows[index].isUpTo ? 'до ' : ''}${_draft.rows[index].percent}% · ${_draft.rows[index].rewardType.label}',
+                          '${_draft.rows[index].isUpTo ? 'до ' : ''}${_draft.rows[index].percent}% · ${_draft.rows[index].rewardLabel}',
                         ),
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
@@ -471,9 +493,20 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
 }
 
 class _ReviewRowDialog extends StatefulWidget {
-  const _ReviewRowDialog({required this.defaultReward, this.row});
+  const _ReviewRowDialog({
+    required this.defaultReward,
+    required this.defaultCustomRewardName,
+    required this.categorySuggestions,
+    required this.notesSuggestions,
+    required this.rewardSuggestions,
+    this.row,
+  });
   final ReviewRow? row;
   final RewardType defaultReward;
+  final String defaultCustomRewardName;
+  final List<String> categorySuggestions;
+  final List<String> notesSuggestions;
+  final List<String> rewardSuggestions;
   @override
   State<_ReviewRowDialog> createState() => _ReviewRowDialogState();
 }
@@ -486,12 +519,27 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
   );
   late final _notes = TextEditingController(text: widget.row?.notes ?? '');
   late RewardType _reward = widget.row?.rewardType ?? widget.defaultReward;
+  late final _customReward = TextEditingController(
+    text: widget.row?.customRewardName ?? widget.defaultCustomRewardName,
+  );
   late bool _upTo = widget.row?.isUpTo ?? false;
+
+  List<String> _matches(List<String> suggestions, String query) =>
+      query.trim().isEmpty
+      ? const []
+      : suggestions
+            .where(
+              (item) => item.toLowerCase().contains(query.trim().toLowerCase()),
+            )
+            .toSet()
+            .take(5)
+            .toList();
   @override
   void dispose() {
     _name.dispose();
     _rate.dispose();
     _notes.dispose();
+    _customReward.dispose();
     super.dispose();
   }
 
@@ -510,10 +558,25 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
               controller: _name,
               maxLength: 100,
               decoration: const InputDecoration(labelText: 'Точное название'),
+              onChanged: (_) => setState(() {}),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Введите название'
                   : null,
             ),
+            if (_matches(widget.categorySuggestions, _name.text).isNotEmpty)
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final item in _matches(
+                    widget.categorySuggestions,
+                    _name.text,
+                  ))
+                    ActionChip(
+                      label: Text(item),
+                      onPressed: () => setState(() => _name.text = item),
+                    ),
+                ],
+              ),
             TextFormField(
               controller: _rate,
               keyboardType: const TextInputType.numberWithOptions(
@@ -538,6 +601,35 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
               ],
               onChanged: (value) => setState(() => _reward = value!),
             ),
+            if (_reward == RewardType.custom) ...[
+              TextFormField(
+                controller: _customReward,
+                maxLength: 60,
+                decoration: const InputDecoration(
+                  labelText: 'Название вознаграждения',
+                  hintText: 'Например, мили или баллы банка',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Введите название вознаграждения'
+                    : null,
+                onChanged: (_) => setState(() {}),
+              ),
+              if (widget.rewardSuggestions.isNotEmpty)
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final suggestion in _matches(
+                      widget.rewardSuggestions,
+                      _customReward.text,
+                    ))
+                      ActionChip(
+                        label: Text(suggestion),
+                        onPressed: () =>
+                            setState(() => _customReward.text = suggestion),
+                      ),
+                  ],
+                ),
+            ],
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('До указанного процента'),
@@ -548,10 +640,25 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
               controller: _notes,
               maxLength: 300,
               maxLines: 2,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Условия или примечание',
               ),
             ),
+            if (_matches(widget.notesSuggestions, _notes.text).isNotEmpty)
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final item in _matches(
+                    widget.notesSuggestions,
+                    _notes.text,
+                  ))
+                    ActionChip(
+                      label: Text(item),
+                      onPressed: () => setState(() => _notes.text = item),
+                    ),
+                ],
+              ),
           ],
         ),
       ),
@@ -570,9 +677,13 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
               name: _name.text.trim(),
               percent: double.parse(_rate.text.replaceAll(',', '.')),
               rewardType: _reward,
+              customRewardName: _reward == RewardType.custom
+                  ? _customReward.text.trim()
+                  : '',
               isUpTo: _upTo,
               notes: _notes.text.trim(),
-              selected: widget.row?.selected ?? false,
+              // Newly entered categories are intentional user choices.
+              selected: widget.row?.selected ?? true,
             ),
           );
         },

@@ -58,7 +58,8 @@ class Bank {
 enum RewardType {
   rubles('Рубли'),
   sberSpasibo('Бонусы Спасибо'),
-  otherPoints('Другие баллы');
+  otherPoints('Другие баллы'),
+  custom('Своё название');
 
   const RewardType(this.label);
   final String label;
@@ -94,6 +95,7 @@ class BankCard {
     required this.bank,
     required this.name,
     required this.rewardType,
+    this.customRewardName = '',
   }) {
     if (id.trim().isEmpty || name.trim().isEmpty) {
       throw ArgumentError('Карта должна иметь идентификатор и название');
@@ -103,6 +105,9 @@ class BankCard {
   final Bank bank;
   final String name;
   final RewardType rewardType;
+  final String customRewardName;
+  String get rewardLabel =>
+      customRewardName.trim().isEmpty ? rewardType.label : customRewardName;
   bool get hasAutomaticName => RegExp(r'^Карта \d+$').hasMatch(name);
 }
 
@@ -112,6 +117,7 @@ class CashbackCategory {
     required this.originalName,
     required this.percent,
     required this.rewardType,
+    this.customRewardName = '',
     this.isUpTo = false,
     this.notes = '',
   }) {
@@ -127,6 +133,9 @@ class CashbackCategory {
   final String originalName;
   final double percent;
   final RewardType rewardType;
+  final String customRewardName;
+  String get rewardLabel =>
+      customRewardName.trim().isEmpty ? rewardType.label : customRewardName;
   final bool isUpTo;
   final String notes;
 }

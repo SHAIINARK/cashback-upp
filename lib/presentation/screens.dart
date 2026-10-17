@@ -389,7 +389,7 @@ class _CategoryList extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      rows[i].category.rewardType.label,
+                      rows[i].category.rewardLabel,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],

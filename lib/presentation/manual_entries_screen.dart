@@ -37,7 +37,14 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
 
   Future<void> _editCard([BankCard? card]) async {
     final result = await Navigator.of(context)
-        .push<({Bank bank, String name, RewardType rewardType})>(
+        .push<
+          ({
+            Bank bank,
+            String name,
+            RewardType rewardType,
+            String customRewardName,
+          })
+        >(
           MaterialPageRoute(
             fullscreenDialog: true,
             builder: (_) =>
@@ -52,6 +59,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
           bank: result.bank,
           name: result.name,
           rewardType: result.rewardType,
+          customRewardName: result.customRewardName,
         ),
       ),
     );
@@ -69,6 +77,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
             String name,
             double percent,
             RewardType rewardType,
+            String customRewardName,
             bool isUpTo,
             String notes,
           })
@@ -78,6 +87,25 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
             card: card,
             period: period ?? widget.controller.month,
             category: category,
+            categorySuggestions: widget.controller.allSets
+                .where((set) => set.cardId == card.id)
+                .expand((set) => set.categories)
+                .map((item) => item.originalName)
+                .toSet()
+                .toList(),
+            rewardSuggestions: widget.controller.allSets
+                .where((set) => set.cardId == card.id)
+                .expand((set) => set.categories)
+                .map((item) => item.rewardLabel)
+                .toSet()
+                .toList(),
+            notesSuggestions: widget.controller.allSets
+                .where((set) => set.cardId == card.id)
+                .expand((set) => set.categories)
+                .map((item) => item.notes)
+                .where((item) => item.trim().isNotEmpty)
+                .toSet()
+                .toList(),
           ),
         );
     if (result == null) return;
@@ -90,6 +118,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
           originalName: result.name,
           percent: result.percent,
           rewardType: result.rewardType,
+          customRewardName: result.customRewardName,
           isUpTo: result.isUpTo,
           notes: result.notes,
         ),
@@ -186,7 +215,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
                           ),
                         ],
                       ),
-                      Text(card.rewardType.label),
+                      Text(card.rewardLabel),
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: _busy ? null : () => _editCategory(card),
@@ -208,7 +237,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
                               contentPadding: EdgeInsets.zero,
                               title: Text(category.originalName),
                               subtitle: Text(
-                                '${category.isUpTo ? 'До ' : ''}${category.percent}% · ${category.rewardType.label}${category.notes.isEmpty ? '' : '\n${category.notes}'}',
+                                '${category.isUpTo ? 'До ' : ''}${category.percent}% · ${category.rewardLabel}${category.notes.isEmpty ? '' : '\n${category.notes}'}',
                               ),
                               isThreeLine: category.notes.isNotEmpty,
                               onTap: _busy
@@ -279,6 +308,10 @@ class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
   final _bankAnchorKey = GlobalKey();
   final _bankSearch = TextEditingController();
   final _bankFocus = FocusNode();
+  final _customNameFocus = FocusNode();
+  late final _rewardInput = TextEditingController(
+    text: widget.card?.rewardLabel ?? RewardType.rubles.label,
+  );
   late final _customName = TextEditingController(
     text: _modeFor(widget.card?.name) == _CardNameMode.custom
         ? widget.card!.name
@@ -286,6 +319,7 @@ class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
   );
   late Bank _bank = widget.card?.bank ?? Bank.alfa;
   late RewardType _reward = widget.card?.rewardType ?? RewardType.rubles;
+  late String _customRewardName = widget.card?.customRewardName ?? '';
   late _CardNameMode _nameMode = _modeFor(widget.card?.name);
   OverlayEntry? _bankOverlay;
   bool _bankPickerOpen = false;
@@ -318,6 +352,8 @@ class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
     _bankSearch.dispose();
     _bankFocus.dispose();
     _customName.dispose();
+    _customNameFocus.dispose();
+    _rewardInput.dispose();
     super.dispose();
   }
 
@@ -487,8 +523,12 @@ class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
       _bank = bank;
       if (bank == Bank.sber) {
         _reward = RewardType.sberSpasibo;
+        _customRewardName = '';
+        _rewardInput.text = _reward.label;
       } else if (_reward == RewardType.sberSpasibo) {
         _reward = RewardType.rubles;
+        _customRewardName = '';
+        _rewardInput.text = _reward.label;
       }
     });
   }
@@ -535,12 +575,32 @@ class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
     throw StateError('Не удалось создать название карты');
   }
 
+  List<String> get _rewardSuggestions => {
+    ...RewardType.values
+        .where((type) => type != RewardType.custom)
+        .map((type) => type.label),
+    ...widget.cards.map((card) => card.rewardLabel),
+  }.toList();
+
+  void _selectReward(String value) {
+    final known = RewardType.values
+        .where((type) => type != RewardType.custom)
+        .where((type) => type.label == value)
+        .firstOrNull;
+    setState(() {
+      _rewardInput.text = value;
+      _customRewardName = known == null ? value : '';
+      _reward = known ?? RewardType.custom;
+    });
+  }
+
   void _save() {
     if (!_form.currentState!.validate()) return;
     Navigator.pop(context, (
       bank: _bank,
       name: _resolvedName(),
       rewardType: _reward,
+      customRewardName: _customRewardName,
     ));
   }
 
@@ -581,55 +641,97 @@ class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
                 ),
               ),
               const SizedBox(height: 20),
-              DropdownButtonFormField<_CardNameMode>(
-                key: ValueKey(_nameMode),
-                initialValue: _nameMode,
+              InputDecorator(
                 decoration: const InputDecoration(
                   labelText: 'Название карты (необязательно)',
+                  border: InputBorder.none,
                 ),
-                items: [
-                  for (final mode in _CardNameMode.values)
-                    DropdownMenuItem(value: mode, child: Text(mode.label)),
-                ],
-                onChanged: (mode) {
-                  if (mode != null) setState(() => _nameMode = mode);
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final mode in [
+                      _CardNameMode.automatic,
+                      _CardNameMode.debit,
+                      _CardNameMode.credit,
+                    ])
+                      ChoiceChip(
+                        label: Text(mode.label),
+                        selected: _nameMode == mode,
+                        onSelected: (_) {
+                          setState(() {
+                            _nameMode = mode;
+                            _customName.clear();
+                          });
+                          if (mode == _CardNameMode.automatic) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                FocusScope.of(context)
+                                    .requestFocus(_customNameFocus);
+                              }
+                            });
+                          } else {
+                            _customNameFocus.unfocus();
+                          }
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              _SuggestionFormField(
+                controller: _customName,
+                focusNode: _customNameFocus,
+                suggestions: widget.cards
+                    .where((card) => card.bank == _bank)
+                    .map((card) => card.name)
+                    .where((name) => name != widget.card?.name)
+                    .toSet()
+                    .toList(),
+                label: 'Своё название',
+                hint: 'Оставьте пустым или начните вводить',
+                maxLength: 60,
+                onChanged: (value) => setState(() {
+                  if (value.trim().isNotEmpty) {
+                    _nameMode = _CardNameMode.custom;
+                  } else if (_nameMode == _CardNameMode.custom) {
+                    _nameMode = _CardNameMode.automatic;
+                  }
+                }),
+                validator: (value) {
+                  if (_nameMode != _CardNameMode.custom) return null;
+                  final name = value?.trim() ?? '';
+                  if (name.isEmpty) return 'Введите название карты';
+                  if (widget.cards.any(
+                    (card) =>
+                        card.bank == _bank &&
+                        card.id != widget.card?.id &&
+                        card.name.toLowerCase() == name.toLowerCase(),
+                  )) {
+                    return 'У этого банка уже есть карта с таким названием';
+                  }
+                  return null;
                 },
               ),
-              if (_nameMode == _CardNameMode.custom) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _customName,
-                  maxLength: 60,
-                  decoration: const InputDecoration(
-                    labelText: 'Своё название',
-                    hintText: 'Например, карта для покупок',
-                  ),
-                  validator: (value) {
-                    final name = value?.trim() ?? '';
-                    if (name.isEmpty) return 'Введите название карты';
-                    if (widget.cards.any(
-                      (card) =>
-                          card.bank == _bank &&
-                          card.id != widget.card?.id &&
-                          card.name.toLowerCase() == name.toLowerCase(),
-                    )) {
-                      return 'У этого банка уже есть карта с таким названием';
-                    }
-                    return null;
-                  },
-                ),
-              ],
               const SizedBox(height: 16),
-              DropdownButtonFormField<RewardType>(
-                key: ValueKey(_reward),
-                initialValue: _reward,
-                decoration: const InputDecoration(labelText: 'Вознаграждение'),
-                items: [
-                  for (final type in RewardType.values)
-                    DropdownMenuItem(value: type, child: Text(type.label)),
-                ],
+              _SuggestionFormField(
+                controller: _rewardInput,
+                suggestions: _rewardSuggestions,
+                label: 'Вознаграждение',
+                hint: 'Начните вводить или выберите подсказку',
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Введите вид вознаграждения'
+                    : null,
+                onSuggestionSelected: _selectReward,
                 onChanged: (value) {
-                  if (value != null) setState(() => _reward = value);
+                  final known = RewardType.values
+                      .where((type) => type != RewardType.custom)
+                      .where((type) => type.label == value.trim())
+                      .firstOrNull;
+                  setState(() {
+                    _reward = known ?? RewardType.custom;
+                    _customRewardName = known == null ? value.trim() : '';
+                  });
                 },
               ),
               const SizedBox(height: 24),
@@ -656,10 +758,16 @@ class _CategoryDialog extends StatefulWidget {
   const _CategoryDialog({
     required this.card,
     required this.period,
+    required this.categorySuggestions,
+    required this.rewardSuggestions,
+    required this.notesSuggestions,
     this.category,
   });
   final BankCard card;
   final CashbackMonth period;
+  final List<String> categorySuggestions;
+  final List<String> rewardSuggestions;
+  final List<String> notesSuggestions;
   final CashbackCategory? category;
   @override
   State<_CategoryDialog> createState() => _CategoryDialogState();
@@ -679,11 +787,16 @@ class _CategoryDialogState extends State<_CategoryDialog> {
   late bool _upTo = widget.category?.isUpTo ?? false;
   late RewardType _reward =
       widget.category?.rewardType ?? widget.card.rewardType;
+  late String _customRewardName = widget.category?.customRewardName ?? '';
+  late final _rewardInput = TextEditingController(
+    text: widget.category?.rewardLabel ?? widget.card.rewardLabel,
+  );
   @override
   void dispose() {
     _name.dispose();
     _rate.dispose();
     _notes.dispose();
+    _rewardInput.dispose();
     super.dispose();
   }
 
@@ -722,10 +835,12 @@ class _CategoryDialogState extends State<_CategoryDialog> {
                     }
                   : null,
             ),
-            TextFormField(
+            _SuggestionFormField(
               controller: _name,
+              suggestions: widget.categorySuggestions,
+              label: 'Точное название',
+              hint: 'Начните вводить или выберите подсказку',
               maxLength: 100,
-              decoration: const InputDecoration(labelText: 'Точное название'),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Введите категорию'
                   : null,
@@ -751,22 +866,47 @@ class _CategoryDialogState extends State<_CategoryDialog> {
               value: _upTo,
               onChanged: (value) => setState(() => _upTo = value),
             ),
-            TextFormField(
+            _SuggestionFormField(
               controller: _notes,
+              suggestions: widget.notesSuggestions,
+              label: 'Условия или примечание',
+              hint: 'Можно начать вводить или выбрать подсказку',
               maxLines: 2,
               maxLength: 300,
-              decoration: const InputDecoration(
-                labelText: 'Условия или примечание',
-              ),
             ),
-            DropdownButtonFormField<RewardType>(
-              initialValue: _reward,
-              decoration: const InputDecoration(labelText: 'Вознаграждение'),
-              items: [
-                for (final type in RewardType.values)
-                  DropdownMenuItem(value: type, child: Text(type.label)),
-              ],
-              onChanged: (value) => setState(() => _reward = value!),
+            _SuggestionFormField(
+              controller: _rewardInput,
+              suggestions: {
+                ...RewardType.values
+                    .where((type) => type != RewardType.custom)
+                    .map((type) => type.label),
+                ...widget.rewardSuggestions,
+              }.toList(),
+              label: 'Вознаграждение',
+              hint: 'Начните вводить или выберите подсказку',
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Введите вид вознаграждения'
+                  : null,
+              onSuggestionSelected: (value) {
+                final known = RewardType.values
+                    .where((type) => type != RewardType.custom)
+                    .where((type) => type.label == value)
+                    .firstOrNull;
+                setState(() {
+                  _reward = known ?? RewardType.custom;
+                  _customRewardName = known == null ? value : '';
+                });
+              },
+              onChanged: (value) {
+                final known = RewardType.values
+                    .where((type) => type != RewardType.custom)
+                    .where((type) => type.label == value.trim())
+                    .firstOrNull;
+                setState(() {
+                  _reward = known ?? RewardType.custom;
+                  _customRewardName = known == null ? value.trim() : '';
+                });
+              },
             ),
           ],
         ),
@@ -786,6 +926,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
             name: _name.text.trim(),
             percent: double.parse(_rate.text.replaceAll(',', '.')),
             rewardType: _reward,
+            customRewardName: _customRewardName,
             isUpTo: _upTo,
             notes: _notes.text.trim(),
           ));
@@ -794,4 +935,132 @@ class _CategoryDialogState extends State<_CategoryDialog> {
       ),
     ],
   );
+}
+
+class _SuggestionFormField extends StatefulWidget {
+  const _SuggestionFormField({
+    required this.controller,
+    required this.suggestions,
+    required this.label,
+    required this.hint,
+    this.focusNode,
+    this.maxLength,
+    this.maxLines = 1,
+    this.validator,
+    this.onChanged,
+    this.onSuggestionSelected,
+  });
+
+  final TextEditingController controller;
+  final List<String> suggestions;
+  final String label;
+  final String hint;
+  final FocusNode? focusNode;
+  final int? maxLength;
+  final int maxLines;
+  final String? Function(String?)? validator;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSuggestionSelected;
+
+  @override
+  State<_SuggestionFormField> createState() => _SuggestionFormFieldState();
+}
+
+class _SuggestionFormFieldState extends State<_SuggestionFormField> {
+  late final FocusNode _focus = widget.focusNode ?? FocusNode();
+  bool _ownsFocus = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsFocus = widget.focusNode == null;
+    _focus.addListener(_onFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_onFocusChanged);
+    if (_ownsFocus) _focus.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _choose(String value) {
+    widget.controller.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+    widget.onSuggestionSelected?.call(value);
+    widget.onChanged?.call(value);
+    _focus.unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = widget.controller.text.trim();
+    final lower = query.toLowerCase();
+    final matches = query.isEmpty
+        ? <String>[]
+        : widget.suggestions
+              .where((item) => item.toLowerCase().contains(lower))
+              .toSet()
+              .take(5)
+              .toList();
+    final hasExact = widget.suggestions.any(
+      (item) => item.toLowerCase() == lower,
+    );
+    final showOptions = _focus.hasFocus && query.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextFormField(
+          controller: widget.controller,
+          focusNode: _focus,
+          maxLines: widget.maxLines,
+          maxLength: widget.maxLength,
+          decoration: InputDecoration(
+            labelText: widget.label,
+            hintText: widget.hint,
+          ),
+          validator: widget.validator,
+          onChanged: (value) {
+            setState(() {});
+            widget.onChanged?.call(value);
+          },
+        ),
+        if (showOptions && (matches.isNotEmpty || !hasExact))
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 180),
+            child: Card(
+              margin: const EdgeInsets.only(top: 2),
+              clipBehavior: Clip.antiAlias,
+              child: ListView(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                children: [
+                  for (final suggestion in matches)
+                    ListTile(
+                      dense: true,
+                      title: Text(suggestion),
+                      onTap: () => _choose(suggestion),
+                    ),
+                  if (!hasExact)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.add),
+                      title: Text('Использовать «$query»'),
+                      onTap: () => _choose(query),
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

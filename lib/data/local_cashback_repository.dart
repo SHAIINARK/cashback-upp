@@ -165,6 +165,7 @@ class LocalCashbackRepository implements WritableCashbackRepository {
     'bank': card.bank.name,
     'name': card.name,
     'rewardType': card.rewardType.name,
+    'customRewardName': card.customRewardName,
   };
 
   BankCard _decodeCard(Map<String, dynamic> data) => BankCard(
@@ -172,6 +173,7 @@ class LocalCashbackRepository implements WritableCashbackRepository {
     bank: Bank.fromStoredName(data['bank'] as String),
     name: data['name'] as String,
     rewardType: RewardType.values.byName(data['rewardType'] as String),
+    customRewardName: data['customRewardName'] as String? ?? '',
   );
 
   Map<String, Object?> _encodeSet(MonthlyCashbackSet set) => {
@@ -187,6 +189,7 @@ class LocalCashbackRepository implements WritableCashbackRepository {
             'originalName': category.originalName,
             'percent': category.percent,
             'rewardType': category.rewardType.name,
+            'customRewardName': category.customRewardName,
             'isUpTo': category.isUpTo,
             'notes': category.notes,
           },
@@ -209,6 +212,7 @@ class LocalCashbackRepository implements WritableCashbackRepository {
             rewardType: RewardType.values.byName(
               category['rewardType'] as String,
             ),
+            customRewardName: category['customRewardName'] as String? ?? '',
             isUpTo: category['isUpTo'] as bool? ?? false,
             notes: category['notes'] as String? ?? '',
           );
