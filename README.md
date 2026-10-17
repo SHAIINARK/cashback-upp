@@ -34,7 +34,7 @@ flutter build apk --debug --flavor standard
 
 APK: `build/app/outputs/flutter-apk/app-standard-debug.apk`. Это отладочная сборка, не пакет для магазина. Tesseract4Android загружается из JitPack при сборке; распознавание после установки не требует сети. Сетевые разрешения debug нужны инструментам Flutter.
 
-Подготовка Android-релиза для Google Play и RuStore описана в [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md). Релизная сборка требует отдельный ключ; без него сборка останавливается. Текущий Android ID предварительный, магазинный пакет ещё не готов.
+Подготовка Android-релиза для Google Play и RuStore описана в [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md). Окончательный Android ID утверждён, постоянный ключ создан. Подписанные APK и AAB собраны; перед загрузкой в магазины ещё нужны материалы, настройки консолей и закрытое тестирование.
 
 ## Структура и проверка
 
