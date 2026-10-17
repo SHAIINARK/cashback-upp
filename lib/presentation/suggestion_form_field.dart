@@ -14,6 +14,9 @@ class SuggestionFormField extends StatefulWidget {
     this.autofocus = false,
     this.maxLength,
     this.maxLines = 1,
+    this.prefixIcon,
+    this.suffixIcon,
+    this.allowCustomEntry = true,
     this.validator,
     this.onChanged,
     this.onSuggestionSelected,
@@ -27,6 +30,9 @@ class SuggestionFormField extends StatefulWidget {
   final bool autofocus;
   final int? maxLength;
   final int maxLines;
+  final Widget? prefixIcon;
+  final Widget? suffixIcon;
+  final bool allowCustomEntry;
   final String? Function(String?)? validator;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSuggestionSelected;
@@ -123,10 +129,12 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
   bool _needsSuggestionPanel(String value) {
     final query = value.trim();
     if (query.isEmpty) return false;
+    final matches = _matches(query);
     final exact = widget.suggestions.any(
       (item) => item.trim().toLowerCase() == query.toLowerCase(),
     );
-    return !(exact && _matches(query).length == 1);
+    if (matches.isEmpty && !widget.allowCustomEntry) return false;
+    return !(exact && matches.length == 1);
   }
 
   Widget _buildOverlay(BuildContext overlayContext) {
@@ -141,7 +149,7 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
     final exact = widget.suggestions.any(
       (item) => item.trim().toLowerCase() == query.toLowerCase(),
     );
-    final canUseEntered = query.isNotEmpty && !exact;
+    final canUseEntered = widget.allowCustomEntry && query.isNotEmpty && !exact;
     final rows = matches.length + (canUseEntered ? 1 : 0);
     if (rows == 0) return const SizedBox.shrink();
     final desiredHeight = available;
@@ -222,6 +230,8 @@ class _SuggestionFormFieldState extends State<SuggestionFormField>
       decoration: InputDecoration(
         labelText: widget.label,
         hintText: widget.hint,
+        prefixIcon: widget.prefixIcon,
+        suffixIcon: widget.suffixIcon,
       ),
       validator: widget.validator,
       onChanged: (value) {

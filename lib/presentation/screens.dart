@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/theme.dart';
 import '../domain/models.dart';
 import '../logic/cashback_controller.dart';
+import 'suggestion_form_field.dart';
 import 'widgets.dart';
 
 export 'ocr_import_screen.dart';
@@ -240,21 +241,34 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
         ),
         const SizedBox(height: 16),
         if (sets.isNotEmpty) ...[
-          TextField(
+          SuggestionFormField(
             controller: _search,
+            suggestions: {
+              ...widget.controller.allSets.expand(
+                (set) => [
+                  for (final item in set.categories) ...[
+                    item.originalName,
+                    item.rewardLabel,
+                    if (item.notes.trim().isNotEmpty) item.notes,
+                  ],
+                ],
+              ),
+              ...widget.controller.cards.expand(
+                (card) => [card.bank.label, card.name, card.rewardLabel],
+              ),
+            }.toList(),
+            label: 'Найти категорию',
+            hint: 'Название, банк или карта',
+            allowCustomEntry: false,
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Очистить поиск',
+                    onPressed: () => setState(_search.clear),
+                    icon: const Icon(Icons.close),
+                  ),
             onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: 'Найти категорию',
-              hintText: 'Название, банк или карта',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: query.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Очистить поиск',
-                      onPressed: () => setState(_search.clear),
-                      icon: const Icon(Icons.close),
-                    ),
-            ),
           ),
           const SizedBox(height: 16),
         ],

@@ -150,7 +150,7 @@ void main() {
       addTearDown(controller.dispose);
       await tester.pumpWidget(CashbackApp(controller: controller));
       await tester.enterText(
-        find.widgetWithText(TextField, 'Найти категорию'),
+        find.widgetWithText(TextFormField, 'Найти категорию'),
         'аптеки',
       );
       await tester.pump();
@@ -158,13 +158,13 @@ void main() {
       expect(find.textContaining('Альфа · Дебетовая'), findsOneWidget);
       expect(find.textContaining('Сбер · Основная'), findsOneWidget);
       await tester.enterText(
-        find.widgetWithText(TextField, 'Найти категорию'),
+        find.widgetWithText(TextFormField, 'Найти категорию'),
         'сбер',
       );
       await tester.pump();
       expect(find.text('Аптеки'), findsOneWidget);
       await tester.enterText(
-        find.widgetWithText(TextField, 'Найти категорию'),
+        find.widgetWithText(TextFormField, 'Найти категорию'),
         'нет',
       );
       await tester.pump();
