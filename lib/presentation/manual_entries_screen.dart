@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../domain/models.dart';
 import '../logic/cashback_controller.dart';
 import '../logic/import_period.dart';
+import 'suggestion_catalog.dart';
+import 'suggestion_form_field.dart';
 import 'widgets.dart';
 
 class ManualEntriesScreen extends StatefulWidget {
@@ -87,20 +89,17 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
             card: card,
             period: period ?? widget.controller.month,
             category: category,
-            categorySuggestions: widget.controller.allSets
-                .where((set) => set.cardId == card.id)
-                .expand((set) => set.categories)
-                .map((item) => item.originalName)
-                .toSet()
-                .toList(),
+            categorySuggestions: categorySuggestions(
+              widget.controller.allSets
+                  .expand((set) => set.categories)
+                  .map((item) => item.originalName),
+            ),
             rewardSuggestions: widget.controller.allSets
-                .where((set) => set.cardId == card.id)
                 .expand((set) => set.categories)
                 .map((item) => item.rewardLabel)
                 .toSet()
                 .toList(),
             notesSuggestions: widget.controller.allSets
-                .where((set) => set.cardId == card.id)
                 .expand((set) => set.categories)
                 .map((item) => item.notes)
                 .where((item) => item.trim().isNotEmpty)
@@ -109,8 +108,8 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
           ),
         );
     if (result == null) return;
-    await _run(
-      () => widget.controller.saveCategory(
+    await _run(() async {
+      await widget.controller.saveCategory(
         card.id,
         result.period,
         CashbackCategory(
@@ -122,8 +121,18 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
           isUpTo: result.isUpTo,
           notes: result.notes,
         ),
-      ),
-    );
+      );
+      final originalPeriod = period;
+      if (category != null &&
+          originalPeriod != null &&
+          originalPeriod != result.period) {
+        await widget.controller.deleteCategory(
+          card.id,
+          originalPeriod,
+          category.id,
+        );
+      }
+    });
   }
 
   Future<bool> _confirm(String title, String detail) async =>
@@ -227,7 +236,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
                       )) ...[
                         const Divider(height: 24),
                         Text(
-                          'Месяц ${set.period.month}',
+                          importMonthLabel(set.period),
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                         for (final category in set.categories)
@@ -237,7 +246,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
                               contentPadding: EdgeInsets.zero,
                               title: Text(category.originalName),
                               subtitle: Text(
-                                '${category.isUpTo ? 'До ' : ''}${category.percent}% · ${category.rewardLabel}${category.notes.isEmpty ? '' : '\n${category.notes}'}',
+                                '${category.isUpTo ? 'До ' : ''}${formatCashbackPercent(category.percent)}% · ${category.rewardLabel}${category.notes.isEmpty ? '' : '\n${category.notes}'}',
                               ),
                               isThreeLine: category.notes.isNotEmpty,
                               onTap: _busy
@@ -679,7 +688,7 @@ class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
                 ),
               ),
               const SizedBox(height: 8),
-              _SuggestionFormField(
+              SuggestionFormField(
                 controller: _customName,
                 focusNode: _customNameFocus,
                 suggestions: widget.cards
@@ -714,7 +723,7 @@ class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
                 },
               ),
               const SizedBox(height: 16),
-              _SuggestionFormField(
+              SuggestionFormField(
                 controller: _rewardInput,
                 suggestions: _rewardSuggestions,
                 label: 'Вознаграждение',
@@ -779,7 +788,9 @@ class _CategoryDialogState extends State<_CategoryDialog> {
     text: widget.category?.originalName ?? '',
   );
   late final _rate = TextEditingController(
-    text: widget.category?.percent.toString() ?? '',
+    text: widget.category == null
+        ? ''
+        : formatCashbackPercent(widget.category!.percent),
   );
   late final _notes = TextEditingController(text: widget.category?.notes ?? '');
   late int _month = widget.period.month;
@@ -828,14 +839,16 @@ class _CategoryDialogState extends State<_CategoryDialog> {
                     child: Text(importMonthLabel(period)),
                   ),
               ],
-              onChanged: widget.category == null
-                  ? (value) {
-                      _month = value!.month;
-                      _year = value.year;
-                    }
-                  : null,
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _month = value.month;
+                    _year = value.year;
+                  });
+                }
+              },
             ),
-            _SuggestionFormField(
+            SuggestionFormField(
               controller: _name,
               suggestions: widget.categorySuggestions,
               label: 'Точное название',
@@ -866,7 +879,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
               value: _upTo,
               onChanged: (value) => setState(() => _upTo = value),
             ),
-            _SuggestionFormField(
+            SuggestionFormField(
               controller: _notes,
               suggestions: widget.notesSuggestions,
               label: 'Условия или примечание',
@@ -874,7 +887,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
               maxLines: 2,
               maxLength: 300,
             ),
-            _SuggestionFormField(
+            SuggestionFormField(
               controller: _rewardInput,
               suggestions: {
                 ...RewardType.values
@@ -935,132 +948,4 @@ class _CategoryDialogState extends State<_CategoryDialog> {
       ),
     ],
   );
-}
-
-class _SuggestionFormField extends StatefulWidget {
-  const _SuggestionFormField({
-    required this.controller,
-    required this.suggestions,
-    required this.label,
-    required this.hint,
-    this.focusNode,
-    this.maxLength,
-    this.maxLines = 1,
-    this.validator,
-    this.onChanged,
-    this.onSuggestionSelected,
-  });
-
-  final TextEditingController controller;
-  final List<String> suggestions;
-  final String label;
-  final String hint;
-  final FocusNode? focusNode;
-  final int? maxLength;
-  final int maxLines;
-  final String? Function(String?)? validator;
-  final ValueChanged<String>? onChanged;
-  final ValueChanged<String>? onSuggestionSelected;
-
-  @override
-  State<_SuggestionFormField> createState() => _SuggestionFormFieldState();
-}
-
-class _SuggestionFormFieldState extends State<_SuggestionFormField> {
-  late final FocusNode _focus = widget.focusNode ?? FocusNode();
-  bool _ownsFocus = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _ownsFocus = widget.focusNode == null;
-    _focus.addListener(_onFocusChanged);
-  }
-
-  @override
-  void dispose() {
-    _focus.removeListener(_onFocusChanged);
-    if (_ownsFocus) _focus.dispose();
-    super.dispose();
-  }
-
-  void _onFocusChanged() {
-    if (mounted) setState(() {});
-  }
-
-  void _choose(String value) {
-    widget.controller.value = TextEditingValue(
-      text: value,
-      selection: TextSelection.collapsed(offset: value.length),
-    );
-    widget.onSuggestionSelected?.call(value);
-    widget.onChanged?.call(value);
-    _focus.unfocus();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final query = widget.controller.text.trim();
-    final lower = query.toLowerCase();
-    final matches = query.isEmpty
-        ? <String>[]
-        : widget.suggestions
-              .where((item) => item.toLowerCase().contains(lower))
-              .toSet()
-              .take(5)
-              .toList();
-    final hasExact = widget.suggestions.any(
-      (item) => item.toLowerCase() == lower,
-    );
-    final showOptions = _focus.hasFocus && query.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextFormField(
-          controller: widget.controller,
-          focusNode: _focus,
-          maxLines: widget.maxLines,
-          maxLength: widget.maxLength,
-          decoration: InputDecoration(
-            labelText: widget.label,
-            hintText: widget.hint,
-          ),
-          validator: widget.validator,
-          onChanged: (value) {
-            setState(() {});
-            widget.onChanged?.call(value);
-          },
-        ),
-        if (showOptions && (matches.isNotEmpty || !hasExact))
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 180),
-            child: Card(
-              margin: const EdgeInsets.only(top: 2),
-              clipBehavior: Clip.antiAlias,
-              child: ListView(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                children: [
-                  for (final suggestion in matches)
-                    ListTile(
-                      dense: true,
-                      title: Text(suggestion),
-                      onTap: () => _choose(suggestion),
-                    ),
-                  if (!hasExact)
-                    ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.add),
-                      title: Text('Использовать «$query»'),
-                      onTap: () => _choose(query),
-                    ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
 }

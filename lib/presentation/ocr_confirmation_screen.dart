@@ -8,7 +8,29 @@ import '../logic/cashback_controller.dart';
 import '../logic/import_review_draft.dart';
 import '../logic/import_period.dart';
 import '../logic/ocr_import_controller.dart';
+import 'suggestion_catalog.dart';
+import 'suggestion_form_field.dart';
 import 'widgets.dart';
+
+Future<ReviewRow?> showImportCategoryEditor(
+  BuildContext context, {
+  required RewardType defaultReward,
+  required String defaultCustomRewardName,
+  required List<String> categorySuggestions,
+  required List<String> notesSuggestions,
+  required List<String> rewardSuggestions,
+  ReviewRow? row,
+}) => showDialog<ReviewRow>(
+  context: context,
+  builder: (_) => _ReviewRowDialog(
+    row: row,
+    defaultReward: defaultReward,
+    defaultCustomRewardName: defaultCustomRewardName,
+    categorySuggestions: categorySuggestions,
+    notesSuggestions: notesSuggestions,
+    rewardSuggestions: rewardSuggestions,
+  ),
+);
 
 class OcrConfirmationScreen extends StatefulWidget {
   const OcrConfirmationScreen({
@@ -99,14 +121,15 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
         title: const Text('Название банка'),
         content: Form(
           key: form,
-          child: TextFormField(
+          child: SuggestionFormField(
             controller: name,
+            suggestions: Bank.withSaved(
+              widget.controller.cards.map((card) => card.bank),
+            ).map((bank) => bank.label).toList(),
+            label: 'Название банка',
+            hint: 'Введите или выберите банк',
             autofocus: true,
             maxLength: 60,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              hintText: 'Введите название банка',
-            ),
             validator: (value) {
               try {
                 Bank.named(value ?? '');
@@ -153,15 +176,13 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
         row: index == null ? null : _draft.rows[index],
         defaultReward: reward,
         defaultCustomRewardName: card?.customRewardName ?? '',
-        categorySuggestions: {
+        categorySuggestions: categorySuggestions([
           ..._draft.rows.map((row) => row.name),
-          ...widget.controller.allSets
-              .where((set) => set.cardId == card?.id)
-              .expand((set) => set.categories)
-              .map((category) => category.originalName),
-        }.toList(),
+          ...widget.controller.allSets.expand(
+            (set) => set.categories.map((category) => category.originalName),
+          ),
+        ]),
         notesSuggestions: widget.controller.allSets
-            .where((set) => set.cardId == card?.id)
             .expand((set) => set.categories)
             .map((category) => category.notes)
             .where((note) => note.trim().isNotEmpty)
@@ -170,7 +191,6 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
         rewardSuggestions: {
           ..._draft.rows.map((row) => row.rewardLabel),
           ...widget.controller.allSets
-              .where((set) => set.cardId == card?.id)
               .expand((set) => set.categories)
               .map((category) => category.rewardLabel),
         }.where((label) => label.isNotEmpty).toList(),
@@ -243,12 +263,16 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
               const SizedBox(height: 10),
               Text('Новые выбранные строки: ${incoming.length}'),
               for (final item in incoming)
-                Text('• ${item.originalName} — ${item.percent}%'),
+                Text(
+                  '• ${item.originalName} — ${formatCashbackPercent(item.percent)}%',
+                ),
               if (existing != null) ...[
                 const SizedBox(height: 14),
                 Text('Уже сохранено: ${existing.categories.length}'),
                 for (final item in existing.categories)
-                  Text('• ${item.originalName} — ${item.percent}%'),
+                  Text(
+                    '• ${item.originalName} — ${formatCashbackPercent(item.percent)}%',
+                  ),
                 if (duplicate)
                   const Padding(
                     padding: EdgeInsets.only(top: 10),
@@ -446,7 +470,7 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
                               ),
                         title: Text(_draft.rows[index].name),
                         subtitle: Text(
-                          '${_draft.rows[index].isUpTo ? 'до ' : ''}${_draft.rows[index].percent}% · ${_draft.rows[index].rewardLabel}',
+                          '${_draft.rows[index].isUpTo ? 'до ' : ''}${formatCashbackPercent(_draft.rows[index].percent)}% · ${_draft.rows[index].rewardLabel}',
                         ),
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
@@ -515,7 +539,7 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
   final _form = GlobalKey<FormState>();
   late final _name = TextEditingController(text: widget.row?.name ?? '');
   late final _rate = TextEditingController(
-    text: widget.row?.percent.toString() ?? '',
+    text: widget.row == null ? '' : formatCashbackPercent(widget.row!.percent),
   );
   late final _notes = TextEditingController(text: widget.row?.notes ?? '');
   late RewardType _reward = widget.row?.rewardType ?? widget.defaultReward;
@@ -524,16 +548,6 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
   );
   late bool _upTo = widget.row?.isUpTo ?? false;
 
-  List<String> _matches(List<String> suggestions, String query) =>
-      query.trim().isEmpty
-      ? const []
-      : suggestions
-            .where(
-              (item) => item.toLowerCase().contains(query.trim().toLowerCase()),
-            )
-            .toSet()
-            .take(5)
-            .toList();
   @override
   void dispose() {
     _name.dispose();
@@ -554,29 +568,16 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextFormField(
+            SuggestionFormField(
               controller: _name,
+              suggestions: widget.categorySuggestions,
+              label: 'Точное название',
+              hint: 'Начните вводить или выберите подсказку',
               maxLength: 100,
-              decoration: const InputDecoration(labelText: 'Точное название'),
-              onChanged: (_) => setState(() {}),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Введите название'
                   : null,
             ),
-            if (_matches(widget.categorySuggestions, _name.text).isNotEmpty)
-              Wrap(
-                spacing: 6,
-                children: [
-                  for (final item in _matches(
-                    widget.categorySuggestions,
-                    _name.text,
-                  ))
-                    ActionChip(
-                      label: Text(item),
-                      onPressed: () => setState(() => _name.text = item),
-                    ),
-                ],
-              ),
             TextFormField(
               controller: _rate,
               keyboardType: const TextInputType.numberWithOptions(
@@ -602,33 +603,16 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
               onChanged: (value) => setState(() => _reward = value!),
             ),
             if (_reward == RewardType.custom) ...[
-              TextFormField(
+              SuggestionFormField(
                 controller: _customReward,
+                suggestions: widget.rewardSuggestions,
+                label: 'Название вознаграждения',
+                hint: 'Например, мили или баллы банка',
                 maxLength: 60,
-                decoration: const InputDecoration(
-                  labelText: 'Название вознаграждения',
-                  hintText: 'Например, мили или баллы банка',
-                ),
                 validator: (value) => value == null || value.trim().isEmpty
                     ? 'Введите название вознаграждения'
                     : null,
-                onChanged: (_) => setState(() {}),
               ),
-              if (widget.rewardSuggestions.isNotEmpty)
-                Wrap(
-                  spacing: 6,
-                  children: [
-                    for (final suggestion in _matches(
-                      widget.rewardSuggestions,
-                      _customReward.text,
-                    ))
-                      ActionChip(
-                        label: Text(suggestion),
-                        onPressed: () =>
-                            setState(() => _customReward.text = suggestion),
-                      ),
-                  ],
-                ),
             ],
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -636,29 +620,14 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
               value: _upTo,
               onChanged: (value) => setState(() => _upTo = value),
             ),
-            TextFormField(
+            SuggestionFormField(
               controller: _notes,
+              suggestions: widget.notesSuggestions,
+              label: 'Условия или примечание',
+              hint: 'Можно начать вводить или выбрать подсказку',
               maxLength: 300,
               maxLines: 2,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Условия или примечание',
-              ),
             ),
-            if (_matches(widget.notesSuggestions, _notes.text).isNotEmpty)
-              Wrap(
-                spacing: 6,
-                children: [
-                  for (final item in _matches(
-                    widget.notesSuggestions,
-                    _notes.text,
-                  ))
-                    ActionChip(
-                      label: Text(item),
-                      onPressed: () => setState(() => _notes.text = item),
-                    ),
-                ],
-              ),
           ],
         ),
       ),

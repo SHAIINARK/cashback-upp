@@ -382,7 +382,7 @@ class _CategoryList extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '${rows[i].category.isUpTo ? 'до ' : ''}${rows[i].category.percent.toStringAsFixed(rows[i].category.percent % 1 == 0 ? 0 : 1)}%',
+                      '${rows[i].category.isUpTo ? 'до ' : ''}${formatCashbackPercent(rows[i].category.percent)}%',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.w700,

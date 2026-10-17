@@ -65,6 +65,11 @@ enum RewardType {
   final String label;
 }
 
+String formatCashbackPercent(double value) {
+  if (value == value.truncateToDouble()) return value.toInt().toString();
+  return value.toString().replaceAll('.', ',');
+}
+
 class CashbackMonth {
   CashbackMonth(this.year, this.month) {
     if (year < 1 || year > 9999 || month < 1 || month > 12) {

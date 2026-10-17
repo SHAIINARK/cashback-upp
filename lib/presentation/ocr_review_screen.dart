@@ -10,6 +10,8 @@ import '../logic/bank_screenshot_parser.dart';
 import '../logic/ocr_import_controller.dart';
 import '../logic/cashback_controller.dart';
 import '../logic/import_period.dart';
+import '../logic/import_review_draft.dart';
+import 'suggestion_catalog.dart';
 import 'ocr_confirmation_screen.dart';
 import 'widgets.dart';
 
@@ -30,9 +32,9 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
   int _index = 0;
   final Map<int, Bank> _bankHints = {};
   final Map<int, String> _bankNames = {};
-  final Set<int> _savedIndices = {};
   final Map<int, CashbackMonth> _monthOverrides = {};
   final Map<int, String> _cardIds = {};
+  final Map<int, ImportReviewDraft> _editableDrafts = {};
   final LayerLink _bankLayer = LayerLink();
   final GlobalKey _bankAnchorKey = GlobalKey();
   final TextEditingController _bankSearch = TextEditingController();
@@ -121,13 +123,27 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
       }
       draft = _cachedDraft;
     }
+    ImportReviewDraft? editableDraft;
+    if (draft != null) {
+      editableDraft = _editableDrafts[_index];
+      if (editableDraft == null || editableDraft.bank != selectedBank) {
+        editableDraft = ImportReviewDraft(draft, bank: selectedBank);
+        _editableDrafts[_index] = editableDraft;
+      }
+      final selectedPeriod = _monthOverrides[_index] ?? _periodFor(draft);
+      if (selectedPeriod != null) {
+        editableDraft.month = selectedPeriod.month;
+        editableDraft.year = selectedPeriod.year;
+      }
+      editableDraft.cardId = _cardIds[_index];
+    }
     return PopScope(
       canPop: !_bankPickerOpen,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _bankPickerOpen) _closeBankPicker();
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: false,
+        resizeToAvoidBottomInset: !_bankPickerOpen,
         appBar: AppBar(title: const Text('Проверка импорта')),
         body: SafeArea(
           child: PageBody(
@@ -174,31 +190,13 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
                   selectedName != null && selectedBank == null,
                   selectedBank,
                   _monthOverrides[_index] ?? _periodFor(draft),
+                  editableDraft!,
                 ),
               const SizedBox(height: 24),
-              if (_savedIndices.contains(_index))
-                const Text(
-                  'Выбранные категории этого скриншота сохранены на телефоне.',
-                )
-              else
-                Text(
-                  draft?.categories.any((item) => item.selectionUnknown) == true
-                      ? 'Здесь показаны и выбранные, и предложенные категории. Нажмите «Исправить и сохранить», чтобы отметить выбранные.'
-                      : 'Если всё верно, «Завершить проверку» сохранит найденные категории. Для исправлений откройте редактирование.',
-                ),
+              const Text(
+                'Проверьте категории прямо здесь: снимите лишние отметки, исправьте найденные строки или добавьте пропущенные.',
+              ),
               const SizedBox(height: 16),
-              if (document != null && widget.controller != null) ...[
-                FilledButton.icon(
-                  onPressed: () => _openConfirmation(result, selectedBank),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: Text(
-                    _savedIndices.contains(_index)
-                        ? 'Проверить и сохранить снова'
-                        : 'Исправить и сохранить',
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
               if (widget.results.length > 1) ...[
                 OutlinedButton.icon(
                   onPressed: _index < widget.results.length - 1
@@ -217,7 +215,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
               TextButton(
                 onPressed: _saving
                     ? null
-                    : () => Navigator.of(context).pop(_savedIndices.isNotEmpty),
+                    : () => Navigator.of(context).pop(false),
                 child: const Text('Выйти без сохранения новых категорий'),
               ),
               if (_bankPickerOpen)
@@ -239,6 +237,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
     bool unsupportedBank,
     Bank? selectedBank,
     CashbackMonth? selectedPeriod,
+    ImportReviewDraft editableDraft,
   ) {
     final periods = importMonthChoices();
     final periodAllowed =
@@ -293,7 +292,13 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
             ),
         ],
         onChanged: (period) {
-          if (period != null) setState(() => _monthOverrides[_index] = period);
+          if (period != null) {
+            setState(() {
+              _monthOverrides[_index] = period;
+              editableDraft.month = period.month;
+              editableDraft.year = period.year;
+            });
+          }
         },
       ),
       if (!periodAllowed) ...[
@@ -339,40 +344,73 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
         ),
       const SizedBox(height: 12),
       Text(
-        'Найденные категории: ${draft.categories.length}',
+        'Категории · отмечено ${editableDraft.selectedRows.length}',
         style: Theme.of(context).textTheme.titleLarge,
       ),
       const SizedBox(height: 12),
-      for (final category in draft.categories)
+      for (var rowIndex = 0; rowIndex < editableDraft.rows.length; rowIndex++)
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: SurfacePanel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  category.originalName,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${category.isUpTo ? 'до ' : ''}${_rate(category.percent)}%${selectedBank == Bank.sber ? ' бонусами Спасибо' : ''}',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                if (category.selectionUnknown) ...[
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Не подтверждено, что эта строка выбрана в банке.',
+                Material(
+                  type: MaterialType.transparency,
+                  child: CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: editableDraft.rows[rowIndex].selected,
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(
+                            () => editableDraft.rows[rowIndex].selected =
+                                value ?? false,
+                          ),
+                    title: Text(
+                      editableDraft.rows[rowIndex].name,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    subtitle: Text(
+                      '${editableDraft.rows[rowIndex].isUpTo ? 'до ' : ''}${formatCashbackPercent(editableDraft.rows[rowIndex].percent)}% · ${editableDraft.rows[rowIndex].rewardLabel}',
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
                   ),
-                ],
-                if (category.notes.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(category.notes),
-                ],
+                ),
+                if (editableDraft.rows[rowIndex].notes.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 42, bottom: 6),
+                    child: Text(editableDraft.rows[rowIndex].notes),
+                  ),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: _saving
+                          ? null
+                          : () => _editReviewRow(editableDraft, rowIndex),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Изменить'),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Удалить строку',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: _saving
+                          ? null
+                          : () => setState(
+                              () => editableDraft.rows.removeAt(rowIndex),
+                            ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
         ),
+      OutlinedButton.icon(
+        onPressed: _saving ? null : () => _editReviewRow(editableDraft),
+        icon: const Icon(Icons.add),
+        label: const Text('Добавить пропущенную категорию'),
+      ),
       ExpansionTile(
         title: const Text('Весь распознанный текст'),
         children: [
@@ -387,20 +425,64 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
     ];
   }
 
-  Future<void> _openConfirmation(ScreenshotResult result, Bank? bank) async {
-    final index = _index;
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => OcrConfirmationScreen(
-          result: result,
-          controller: widget.controller!,
-          initialBank: bank,
-          initialPeriod: _monthOverrides[index],
-          initialCardId: _cardIds[index],
+  Future<void> _editReviewRow(ImportReviewDraft draft, [int? rowIndex]) async {
+    final controller = widget.controller;
+    final bank = draft.bank;
+    final card = controller?.cards
+        .where((item) => item.id == draft.cardId)
+        .firstOrNull;
+    final cardIds = controller?.cards
+        .where((item) => item.bank == bank)
+        .map((item) => item.id)
+        .toSet();
+    final savedCategories =
+        controller?.allSets
+            .where((set) => cardIds?.contains(set.cardId) ?? false)
+            .expand((set) => set.categories)
+            .toList() ??
+        [];
+    final row = rowIndex == null ? null : draft.rows[rowIndex];
+    final result = await showImportCategoryEditor(
+      context,
+      row: row,
+      defaultReward:
+          row?.rewardType ??
+          card?.rewardType ??
+          (bank == Bank.sber ? RewardType.sberSpasibo : RewardType.rubles),
+      defaultCustomRewardName:
+          row?.customRewardName ?? card?.customRewardName ?? '',
+      categorySuggestions: categorySuggestions([
+        ...draft.rows.map((item) => item.name),
+        ...savedCategories.map((item) => item.originalName),
+        ...?controller?.allSets.expand(
+          (set) => set.categories.map((item) => item.originalName),
         ),
-      ),
+      ]),
+      notesSuggestions: savedCategories
+          .map((item) => item.notes)
+          .where((item) => item.trim().isNotEmpty)
+          .followedBy(
+            controller?.allSets
+                    .expand((set) => set.categories)
+                    .map((item) => item.notes)
+                    .where((item) => item.trim().isNotEmpty) ??
+                const <String>[],
+          )
+          .toSet()
+          .toList(),
+      rewardSuggestions: {
+        ...draft.rows.map((item) => item.rewardLabel),
+        ...savedCategories.map((item) => item.rewardLabel),
+      }.toList(),
     );
-    if (saved == true && mounted) setState(() => _savedIndices.add(index));
+    if (result == null || !mounted) return;
+    setState(() {
+      if (rowIndex == null) {
+        draft.rows.add(result);
+      } else {
+        draft.rows[rowIndex] = result;
+      }
+    });
   }
 
   Future<void> _finish() async {
@@ -412,7 +494,6 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
     final items = <QuickImportItem>[];
     final guessedBanks = <String>[];
     for (var index = 0; index < widget.results.length; index++) {
-      if (_savedIndices.contains(index)) continue;
       final result = widget.results[index];
       final document = result.document;
       if (document == null) {
@@ -430,8 +511,8 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
       if (result.draft?.bankIsGuess == true && selectedName == null) {
         guessedBanks.add('Скриншот ${index + 1}: ${bank.label}');
       }
-      final draft = BankScreenshotParser().parse(document, bankHint: bank);
-      final period = _monthOverrides[index] ?? _periodFor(draft);
+      final parsed = BankScreenshotParser().parse(document, bankHint: bank);
+      final period = _monthOverrides[index] ?? _periodFor(parsed);
       if (period == null) {
         _needsCorrection(index, 'Выберите месяц для этого скриншота.');
         return;
@@ -443,48 +524,31 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
         );
         return;
       }
-      if (draft.categories.isEmpty) {
-        _needsCorrection(index, 'Категории не найдены. Исправьте результат.');
-        return;
-      }
-      if (draft.categories.any((item) => item.selectionUnknown)) {
-        _needsCorrection(
-          index,
-          'На этом экране есть предложения банка. Отметьте выбранные категории вручную.',
-        );
-        return;
-      }
-      final cards = controller.cards
-          .where((card) => card.bank == bank)
-          .toList();
-      final cardId = _cardIds[index];
-      if (cards.length > 1 && cardId == null) {
-        _needsCorrection(index, 'Выберите карту этого банка.');
+      final review =
+          _editableDrafts[index] ?? ImportReviewDraft(parsed, bank: bank);
+      review.bank = bank;
+      review.month = period.month;
+      review.year = period.year;
+      review.cardId = _cardIds[index];
+      final validation = review.validate(controller.cards);
+      if (validation != null) {
+        _needsCorrection(index, validation);
         return;
       }
       items.add(
         QuickImportItem(
           bank: bank,
-          cardId: cardId,
+          cardId: review.cardId,
           period: period,
           categories: [
-            for (final category in draft.categories)
-              CashbackCategory(
-                id: controller.newId(),
-                originalName: category.originalName,
-                percent: category.percent,
-                rewardType: bank == Bank.sber
-                    ? RewardType.sberSpasibo
-                    : RewardType.rubles,
-                isUpTo: category.isUpTo,
-                notes: category.notes,
-              ),
+            for (final row in review.selectedRows)
+              row.toCategory(controller.newId()),
           ],
         ),
       );
     }
     if (items.isEmpty) {
-      Navigator.of(context).pop(_savedIndices.isNotEmpty);
+      Navigator.of(context).pop(false);
       return;
     }
     if (guessedBanks.isNotEmpty) {
@@ -692,6 +756,8 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
     setState(() {
       _bankNames[index] = bank.label;
       _bankHints[index] = bank;
+      _cardIds.remove(index);
+      _editableDrafts.remove(index);
     });
   }
 
@@ -703,10 +769,6 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
     _bankSearchFocus.unfocus();
     if (mounted) setState(() => _bankPickerOpen = false);
   }
-
-  String _rate(double value) => value == value.truncateToDouble()
-      ? value.toInt().toString()
-      : value.toString().replaceAll('.', ',');
 }
 
 class _ScreenshotNavigation extends StatelessWidget {

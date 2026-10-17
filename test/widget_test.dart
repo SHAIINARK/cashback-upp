@@ -79,7 +79,7 @@ void main() {
     await tester.tap(find.text('Добавить карту'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).first, 'Основная');
-    await tester.tap(find.text('Сохранить').last);
+    await tester.tap(find.text('Добавить').last);
     await tester.pumpAndSettle();
     expect(find.text('Альфа · Основная'), findsOneWidget);
     await tester.tap(find.text('Добавить категорию'));
