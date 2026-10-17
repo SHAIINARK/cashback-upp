@@ -37,7 +37,8 @@ class LocalCashbackRepository implements WritableCashbackRepository {
       return;
     }
     final decoded = jsonDecode(await file.readAsString());
-    if (decoded is! Map<String, dynamic> || decoded['schema'] != 1) {
+    if (decoded is! Map<String, dynamic> ||
+        (decoded['schema'] != 1 && decoded['schema'] != 2)) {
       throw const FormatException(
         'Неподдерживаемая версия сохранённых данных.',
       );
@@ -74,7 +75,7 @@ class LocalCashbackRepository implements WritableCashbackRepository {
       final file = await _file;
       final temporary = File('${file.path}.tmp');
       final payload = jsonEncode({
-        'schema': 1,
+        'schema': 2,
         'cards': cards.map(_encodeCard).toList(),
         'sets': sets.map(_encodeSet).toList(),
       });
@@ -168,7 +169,7 @@ class LocalCashbackRepository implements WritableCashbackRepository {
 
   BankCard _decodeCard(Map<String, dynamic> data) => BankCard(
     id: data['id'] as String,
-    bank: Bank.values.byName(data['bank'] as String),
+    bank: Bank.fromStoredName(data['bank'] as String),
     name: data['name'] as String,
     rewardType: RewardType.values.byName(data['rewardType'] as String),
   );

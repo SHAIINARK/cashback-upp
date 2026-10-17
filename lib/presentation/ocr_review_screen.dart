@@ -107,10 +107,11 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
     final selectedName = _bankNames[_index];
     final selectedBank = selectedName == null
         ? _bankHints[_index] ?? detectedBank
-        : Bank.values.where((bank) => bank.label == selectedName).firstOrNull;
+        : _bankHints[_index] ?? Bank.named(selectedName);
     ParsedScreenshot? draft;
     if (document != null) {
-      if (!identical(document, _cachedDocument) || selectedBank != _cachedBank) {
+      if (!identical(document, _cachedDocument) ||
+          selectedBank != _cachedBank) {
         _cachedDocument = document;
         _cachedBank = selectedBank;
         _cachedDraft = BankScreenshotParser().parse(
@@ -421,7 +422,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
       final selectedName = _bankNames[index];
       final bank = selectedName == null
           ? _bankHints[index] ?? result.draft?.bank
-          : Bank.values.where((item) => item.label == selectedName).firstOrNull;
+          : _bankHints[index] ?? Bank.named(selectedName);
       if (bank == null) {
         _needsCorrection(index, 'Выберите банк для этого скриншота.');
         return;
@@ -580,12 +581,18 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
         MediaQuery.viewInsetsOf(overlayContext).bottom;
     final available = math.max(0.0, keyboardTop - anchorBottom - 8);
     final query = _bankSearch.text.trim().toLowerCase();
-    final matches = Bank.values
+    final options = Bank.withSaved(
+      widget.controller?.cards.map((card) => card.bank) ?? const <Bank>[],
+    );
+    final matches = options
         .where((bank) => bank.label.toLowerCase().contains(query))
         .toList();
+    final canAdd =
+        query.isNotEmpty &&
+        !options.any((bank) => bank.label.toLowerCase() == query);
     final listHeight = math.min(
       available,
-      math.max(56.0, matches.length * 56.0),
+      math.max(56.0, (matches.length + (canAdd ? 1 : 0)) * 56.0),
     );
     return Stack(
       children: [
@@ -611,8 +618,10 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
                       controller: _bankSearch,
                       focusNode: _bankSearchFocus,
                       textInputAction: TextInputAction.search,
+                      maxLength: 60,
                       decoration: InputDecoration(
                         hintText: 'Название банка',
+                        counterText: '',
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: IconButton(
                           tooltip: 'Закрыть выбор банка',
@@ -627,7 +636,11 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
                       ),
                       onChanged: (_) => _bankOverlay?.markNeedsBuild(),
                       onSubmitted: (_) {
-                        if (matches.length == 1) _chooseBank(matches.single);
+                        if (matches.length == 1 && !canAdd) {
+                          _chooseBank(matches.single);
+                        } else if (canAdd) {
+                          _chooseBank(Bank.named(_bankSearch.text));
+                        }
                       },
                     ),
                   ),
@@ -640,19 +653,28 @@ class _ImportReviewScreenState extends State<ImportReviewScreen>
                         elevation: 8,
                         borderRadius: BorderRadius.circular(16),
                         clipBehavior: Clip.antiAlias,
-                        child: matches.isEmpty
-                            ? const Center(child: Text('Банк не найден'))
-                            : ListView.builder(
-                                padding: EdgeInsets.zero,
-                                itemCount: matches.length,
-                                itemBuilder: (context, index) => SizedBox(
-                                  height: 56,
-                                  child: ListTile(
-                                    title: Text(matches[index].label),
-                                    onTap: () => _chooseBank(matches[index]),
-                                  ),
-                                ),
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: matches.length + (canAdd ? 1 : 0),
+                          itemBuilder: (context, index) => SizedBox(
+                            height: 56,
+                            child: ListTile(
+                              title: Text(
+                                index < matches.length
+                                    ? matches[index].label
+                                    : 'Использовать «${_bankSearch.text.trim()}»',
                               ),
+                              leading: index < matches.length
+                                  ? null
+                                  : const Icon(Icons.add),
+                              onTap: () => _chooseBank(
+                                index < matches.length
+                                    ? matches[index]
+                                    : Bank.named(_bankSearch.text),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                 ],

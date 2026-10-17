@@ -90,6 +90,53 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
     });
   }
 
+  Future<void> _enterBank() async {
+    final form = GlobalKey<FormState>();
+    final name = TextEditingController();
+    final entered = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Название банка'),
+        content: Form(
+          key: form,
+          child: TextFormField(
+            controller: name,
+            autofocus: true,
+            maxLength: 60,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              hintText: 'Введите название банка',
+            ),
+            validator: (value) {
+              try {
+                Bank.named(value ?? '');
+                return null;
+              } catch (_) {
+                return 'Введите название до 60 символов';
+              }
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (form.currentState!.validate()) {
+                Navigator.pop(dialogContext, name.text.trim());
+              }
+            },
+            child: const Text('Выбрать'),
+          ),
+        ],
+      ),
+    );
+    name.dispose();
+    if (entered != null && mounted) await _changeBank(Bank.named(entered));
+  }
+
   Future<void> _editRow([int? index]) async {
     final card = widget.controller.cards
         .where((item) => item.id == _draft.cardId)
@@ -271,7 +318,10 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
                 border: OutlineInputBorder(),
               ),
               items: [
-                for (final bank in Bank.values)
+                for (final bank in Bank.withSaved([
+                  ...widget.controller.cards.map((card) => card.bank),
+                  if (_draft.bank != null) _draft.bank!,
+                ]))
                   DropdownMenuItem(value: bank, child: Text(bank.label)),
               ],
               onChanged: _saving
@@ -279,6 +329,14 @@ class _OcrConfirmationScreenState extends State<OcrConfirmationScreen> {
                   : (value) {
                       if (value != null) _changeBank(value);
                     },
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _saving ? null : _enterBank,
+                icon: const Icon(Icons.add),
+                label: const Text('Ввести другой банк'),
+              ),
             ),
             const SizedBox(height: 12),
             if (_draft.bank != null && cards.length > 1) ...[

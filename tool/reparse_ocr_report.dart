@@ -31,7 +31,7 @@ Future<void> main() async {
     );
     final draft = parser.parse(
       document,
-      bankHint: Bank.values.byName(report['bankHint'] as String),
+      bankHint: Bank.fromStoredName(report['bankHint'] as String),
     );
     report['categories'] = draft.categories
         .map(

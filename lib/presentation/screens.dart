@@ -353,18 +353,46 @@ class _CategoryList extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(rows[i].category.originalName),
+                      Text(
+                        rows[i].category.originalName,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
                       if (rows[i].card != null)
-                        Text(
-                          '${rows[i].card!.bank.label}${cards.where((card) => card.bank == rows[i].card!.bank).length > 1 || !rows[i].card!.id.startsWith('auto-') ? ' · ${rows[i].card!.name}' : ''}',
-                          style: Theme.of(context).textTheme.bodySmall,
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '${rows[i].card!.bank.label}${cards.where((card) => card.bank == rows[i].card!.bank).length > 1 || !rows[i].card!.id.startsWith('auto-') ? ' · ${rows[i].card!.name}' : ''}',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
                         ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '${rows[i].category.isUpTo ? 'до ' : ''}${rows[i].category.percent.toStringAsFixed(rows[i].category.percent % 1 == 0 ? 0 : 1)}% · ${rows[i].category.rewardType.label}',
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${rows[i].category.isUpTo ? 'до ' : ''}${rows[i].category.percent.toStringAsFixed(rows[i].category.percent % 1 == 0 ? 0 : 1)}%',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      rows[i].category.rewardType.label,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -262,11 +262,19 @@ class _CardDialog extends StatefulWidget {
 class _CardDialogState extends State<_CardDialog> {
   final _form = GlobalKey<FormState>();
   late final _name = TextEditingController(text: widget.card?.name ?? '');
+  late final _customBank = TextEditingController(
+    text: widget.card?.bank.isCustom == true ? widget.card!.bank.label : '',
+  );
   late Bank _bank = widget.card?.bank ?? Bank.alfa;
+  late bool _useCustomBank = widget.card?.bank.isCustom ?? false;
   late RewardType _reward = widget.card?.rewardType ?? RewardType.rubles;
+  Bank get _effectiveBank =>
+      _useCustomBank ? Bank.named(_customBank.text) : _bank;
+
   @override
   void dispose() {
     _name.dispose();
+    _customBank.dispose();
     super.dispose();
   }
 
@@ -279,24 +287,58 @@ class _CardDialogState extends State<_CardDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<Bank>(
-              initialValue: _bank,
+            DropdownButtonFormField<String>(
+              initialValue: _useCustomBank ? '__custom__' : _bank.name,
               decoration: const InputDecoration(labelText: 'Банк'),
               items: [
-                for (final bank in Bank.values)
-                  DropdownMenuItem(value: bank, child: Text(bank.label)),
+                for (final bank in Bank.withSaved(
+                  widget.cards.map((card) => card.bank),
+                ))
+                  DropdownMenuItem(value: bank.name, child: Text(bank.label)),
+                const DropdownMenuItem(
+                  value: '__custom__',
+                  child: Text('Ввести другой банк'),
+                ),
               ],
               onChanged: widget.card == null
                   ? (value) => setState(() {
-                      _bank = value!;
-                      if (_bank == Bank.sber) _reward = RewardType.sberSpasibo;
-                      if (_bank != Bank.sber &&
+                      _useCustomBank = value == '__custom__';
+                      if (!_useCustomBank) {
+                        _bank = Bank.withSaved(
+                          widget.cards.map((card) => card.bank),
+                        ).firstWhere((bank) => bank.name == value);
+                      }
+                      if (!_useCustomBank && _bank == Bank.sber) {
+                        _reward = RewardType.sberSpasibo;
+                      }
+                      if ((_useCustomBank || _bank != Bank.sber) &&
                           _reward == RewardType.sberSpasibo) {
                         _reward = RewardType.rubles;
                       }
                     })
                   : null,
             ),
+            if (_useCustomBank) ...[
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _customBank,
+                enabled: widget.card == null || widget.card!.bank.isCustom,
+                maxLength: 60,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Название банка',
+                  hintText: 'Как вы хотите его видеть',
+                ),
+                validator: (value) {
+                  try {
+                    Bank.named(value ?? '');
+                    return null;
+                  } catch (_) {
+                    return 'Введите название банка до 60 символов';
+                  }
+                },
+              ),
+            ],
             TextFormField(
               controller: _name,
               autofocus: true,
@@ -305,7 +347,10 @@ class _CardDialogState extends State<_CardDialog> {
                 labelText:
                     widget.cards.any(
                       (card) =>
-                          card.bank == _bank && card.id != widget.card?.id,
+                          card.bank ==
+                              (widget.card?.bank ??
+                                  (_useCustomBank ? null : _bank)) &&
+                          card.id != widget.card?.id,
                     )
                     ? 'Как отличать эту карту?'
                     : 'Название карты',
@@ -314,9 +359,15 @@ class _CardDialogState extends State<_CardDialog> {
               validator: (value) {
                 final name = value?.trim() ?? '';
                 if (name.isEmpty) return 'Введите название';
+                Bank bank;
+                try {
+                  bank = _effectiveBank;
+                } catch (_) {
+                  return null;
+                }
                 if (widget.cards.any(
                   (card) =>
-                      card.bank == _bank &&
+                      card.bank == bank &&
                       card.id != widget.card?.id &&
                       card.name.toLowerCase() == name.toLowerCase(),
                 )) {
@@ -350,7 +401,7 @@ class _CardDialogState extends State<_CardDialog> {
         onPressed: () {
           if (_form.currentState!.validate()) {
             Navigator.pop(context, (
-              bank: _bank,
+              bank: _effectiveBank,
               name: _name.text.trim(),
               rewardType: _reward,
             ));

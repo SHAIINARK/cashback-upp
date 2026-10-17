@@ -1,12 +1,58 @@
-enum Bank {
-  alfa('Альфа'),
-  tbank('Т-Банк'),
-  sber('Сбер'),
-  vtb('ВТБ'),
-  ozon('Ozon Банк');
+class Bank {
+  const Bank._(this.name, this.label);
 
-  const Bank(this.label);
+  static const alfa = Bank._('alfa', 'Альфа');
+  static const tbank = Bank._('tbank', 'Т-Банк');
+  static const sber = Bank._('sber', 'Сбер');
+  static const vtb = Bank._('vtb', 'ВТБ');
+  static const ozon = Bank._('ozon', 'Ozon Банк');
+  static const values = [alfa, tbank, sber, vtb, ozon];
+
+  /// Known banks retain their old IDs. Other names keep the user's wording.
+  factory Bank.named(String input) {
+    final label = input.trim();
+    if (label.isEmpty ||
+        label.length > 60 ||
+        label.contains(RegExp(r'[\x00-\x1f\x7f]'))) {
+      throw ArgumentError('Введите название банка до 60 символов.');
+    }
+    for (final bank in values) {
+      if (bank.label.toLowerCase() == label.toLowerCase()) return bank;
+    }
+    return Bank._('custom:${Uri.encodeComponent(label)}', label);
+  }
+
+  factory Bank.fromStoredName(String name) {
+    for (final bank in values) {
+      if (bank.name == name) return bank;
+    }
+    if (name.startsWith('custom:')) {
+      return Bank.named(Uri.decodeComponent(name.substring(7)));
+    }
+    throw FormatException('Неизвестный банк в сохранённых данных.');
+  }
+
+  static List<Bank> withSaved(Iterable<Bank> saved) {
+    final result = <Bank>[...values];
+    for (final bank in saved) {
+      if (!result.contains(bank)) result.add(bank);
+    }
+    return result;
+  }
+
+  final String name;
   final String label;
+  bool get isCustom => name.startsWith('custom:');
+
+  @override
+  bool operator ==(Object other) =>
+      other is Bank &&
+      (isCustom && other.isCustom
+          ? label.toLowerCase() == other.label.toLowerCase()
+          : name == other.name);
+
+  @override
+  int get hashCode => isCustom ? label.toLowerCase().hashCode : name.hashCode;
 }
 
 enum RewardType {
