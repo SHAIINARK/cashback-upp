@@ -578,6 +578,7 @@ class _ReviewRowDialogState extends State<_ReviewRowDialog> {
               suggestions: widget.categorySuggestions,
               label: 'Точное название',
               hint: 'Начните вводить или выберите подсказку',
+              clearOnFocus: widget.row != null,
               maxLength: 100,
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Введите название'

@@ -854,6 +854,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
               suggestions: widget.categorySuggestions,
               label: 'Точное название',
               hint: 'Начните вводить или выберите подсказку',
+              clearOnFocus: widget.category != null,
               maxLength: 100,
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Введите категорию'
