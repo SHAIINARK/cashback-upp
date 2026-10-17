@@ -36,6 +36,8 @@ APK: `build/app/outputs/flutter-apk/app-standard-debug.apk`. Это отладо
 
 Подготовка Android-релиза для Google Play и RuStore описана в [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md). Окончательный Android ID утверждён, постоянный ключ создан. Подписанные APK и AAB собраны; перед загрузкой в магазины ещё нужны материалы, настройки консолей и закрытое тестирование.
 
+Для проверки релиза рядом с обычной установкой: `flutter build apk --release --flavor qa`. APK `build/app/outputs/flutter-apk/app-qa-release.apk` имеет отдельный Android ID с суффиксом `.qa`. На Samsung SM-G780G эта копия прошла импорт, сохранение и холодный перезапуск; подробности в PROJECT_CONTEXT.md.
+
 ## Структура и проверка
 
 `lib/domain` — модели и независимый контракт OCR; `lib/data` — нативный адаптер и репозиторий; `lib/logic` — контроллер импорта и отдельные банковские правила; `lib/presentation` — интерфейс; `android`/`ios` — платформенные движки. Пользовательская база не зависит от формата OCR.
