@@ -267,7 +267,7 @@ class _HomeCashbackViewState extends State<_HomeCashbackView> {
                 DropdownMenuItem(
                   value: card.id,
                   child: Text(
-                    '${card.bank.label}${widget.controller.cards.where((item) => item.bank == card.bank).length > 1 || !card.id.startsWith('auto-') ? ' · ${card.name}' : ''}',
+                    '${card.bank.label}${widget.controller.cards.where((item) => item.bank == card.bank).length > 1 || !card.hasAutomaticName ? ' · ${card.name}' : ''}',
                   ),
                 ),
             ],
@@ -365,7 +365,7 @@ class _CategoryList extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
-                            '${rows[i].card!.bank.label}${cards.where((card) => card.bank == rows[i].card!.bank).length > 1 || !rows[i].card!.id.startsWith('auto-') ? ' · ${rows[i].card!.name}' : ''}',
+                            '${rows[i].card!.bank.label}${cards.where((card) => card.bank == rows[i].card!.bank).length > 1 || !rows[i].card!.hasAutomaticName ? ' · ${rows[i].card!.name}' : ''}',
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
                                   color: Theme.of(context)

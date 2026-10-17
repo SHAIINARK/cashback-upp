@@ -103,6 +103,7 @@ class BankCard {
   final Bank bank;
   final String name;
   final RewardType rewardType;
+  bool get hasAutomaticName => RegExp(r'^Карта \d+$').hasMatch(name);
 }
 
 class CashbackCategory {

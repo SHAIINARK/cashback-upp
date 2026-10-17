@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../domain/models.dart';
@@ -34,11 +36,13 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
   }
 
   Future<void> _editCard([BankCard? card]) async {
-    final result =
-        await showDialog<({Bank bank, String name, RewardType rewardType})>(
-          context: context,
-          builder: (_) =>
-              _CardDialog(card: card, cards: widget.controller.cards),
+    final result = await Navigator.of(context)
+        .push<({Bank bank, String name, RewardType rewardType})>(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) =>
+                _CardDialog(card: card, cards: widget.controller.cards),
+          ),
         );
     if (result == null) return;
     await _run(
@@ -149,7 +153,7 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              '${card.bank.label}${cards.where((item) => item.bank == card.bank).length > 1 || !card.id.startsWith('auto-') ? ' · ${card.name}' : ''}',
+                              '${card.bank.label}${cards.where((item) => item.bank == card.bank).length > 1 || !card.hasAutomaticName ? ' · ${card.name}' : ''}',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
@@ -251,6 +255,16 @@ class _ManualEntriesScreenState extends State<ManualEntriesScreen> {
   );
 }
 
+enum _CardNameMode {
+  automatic('Не указывать'),
+  debit('Дебетовая'),
+  credit('Кредитная'),
+  custom('Своё название');
+
+  const _CardNameMode(this.label);
+  final String label;
+}
+
 class _CardDialog extends StatefulWidget {
   const _CardDialog({this.card, required this.cards});
   final BankCard? card;
@@ -259,157 +273,382 @@ class _CardDialog extends StatefulWidget {
   State<_CardDialog> createState() => _CardDialogState();
 }
 
-class _CardDialogState extends State<_CardDialog> {
+class _CardDialogState extends State<_CardDialog> with WidgetsBindingObserver {
   final _form = GlobalKey<FormState>();
-  late final _name = TextEditingController(text: widget.card?.name ?? '');
-  late final _customBank = TextEditingController(
-    text: widget.card?.bank.isCustom == true ? widget.card!.bank.label : '',
+  final _bankLayer = LayerLink();
+  final _bankAnchorKey = GlobalKey();
+  final _bankSearch = TextEditingController();
+  final _bankFocus = FocusNode();
+  late final _customName = TextEditingController(
+    text: _modeFor(widget.card?.name) == _CardNameMode.custom
+        ? widget.card!.name
+        : '',
   );
   late Bank _bank = widget.card?.bank ?? Bank.alfa;
-  late bool _useCustomBank = widget.card?.bank.isCustom ?? false;
   late RewardType _reward = widget.card?.rewardType ?? RewardType.rubles;
-  Bank get _effectiveBank =>
-      _useCustomBank ? Bank.named(_customBank.text) : _bank;
+  late _CardNameMode _nameMode = _modeFor(widget.card?.name);
+  OverlayEntry? _bankOverlay;
+  bool _bankPickerOpen = false;
+  bool _keyboardWasVisible = false;
+
+  static _CardNameMode _modeFor(String? name) {
+    if (name == null || RegExp(r'^Карта \d+$').hasMatch(name)) {
+      return _CardNameMode.automatic;
+    }
+    if (name == 'Дебетовая' || RegExp(r'^Дебетовая \d+$').hasMatch(name)) {
+      return _CardNameMode.debit;
+    }
+    if (name == 'Кредитная' || RegExp(r'^Кредитная \d+$').hasMatch(name)) {
+      return _CardNameMode.credit;
+    }
+    return _CardNameMode.custom;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void dispose() {
-    _name.dispose();
-    _customBank.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _bankOverlay?.remove();
+    _bankOverlay?.dispose();
+    _bankSearch.dispose();
+    _bankFocus.dispose();
+    _customName.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.card == null ? 'Добавить карту' : 'Название карты'),
-    content: SingleChildScrollView(
-      child: Form(
-        key: _form,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _useCustomBank ? '__custom__' : _bank.name,
-              decoration: const InputDecoration(labelText: 'Банк'),
-              items: [
-                for (final bank in Bank.withSaved(
-                  widget.cards.map((card) => card.bank),
-                ))
-                  DropdownMenuItem(value: bank.name, child: Text(bank.label)),
-                const DropdownMenuItem(
-                  value: '__custom__',
-                  child: Text('Ввести другой банк'),
-                ),
-              ],
-              onChanged: widget.card == null
-                  ? (value) => setState(() {
-                      _useCustomBank = value == '__custom__';
-                      if (!_useCustomBank) {
-                        _bank = Bank.withSaved(
-                          widget.cards.map((card) => card.bank),
-                        ).firstWhere((bank) => bank.name == value);
-                      }
-                      if (!_useCustomBank && _bank == Bank.sber) {
-                        _reward = RewardType.sberSpasibo;
-                      }
-                      if ((_useCustomBank || _bank != Bank.sber) &&
-                          _reward == RewardType.sberSpasibo) {
-                        _reward = RewardType.rubles;
-                      }
-                    })
-                  : null,
+  void didChangeMetrics() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_bankPickerOpen) return;
+      final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+      if (_keyboardWasVisible && !keyboardVisible) {
+        _closeBankPicker();
+      } else {
+        _keyboardWasVisible = keyboardVisible;
+        _bankOverlay?.markNeedsBuild();
+      }
+    });
+  }
+
+  Future<void> _openBankPicker() async {
+    if (_bankPickerOpen) return;
+    _bankSearch.clear();
+    _keyboardWasVisible = false;
+    setState(() => _bankPickerOpen = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_bankPickerOpen) return;
+    final anchor = _bankAnchorKey.currentContext;
+    if (anchor == null || !anchor.mounted) return;
+    await Scrollable.ensureVisible(
+      anchor,
+      alignment: 0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+    if (!mounted || !_bankPickerOpen) return;
+    _bankOverlay = OverlayEntry(builder: _buildBankOverlay);
+    Overlay.of(context).insert(_bankOverlay!);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _bankPickerOpen) _bankFocus.requestFocus();
+    });
+  }
+
+  Widget _buildBankOverlay(BuildContext overlayContext) {
+    final anchorBox =
+        _bankAnchorKey.currentContext?.findRenderObject() as RenderBox?;
+    final anchorHeight = anchorBox?.size.height ?? 56.0;
+    final anchorWidth =
+        anchorBox?.size.width ?? MediaQuery.sizeOf(context).width - 48;
+    final anchorBottom = anchorBox == null
+        ? 0.0
+        : anchorBox.localToGlobal(Offset(0, anchorHeight)).dy;
+    final keyboardTop =
+        MediaQuery.sizeOf(overlayContext).height -
+        MediaQuery.viewInsetsOf(overlayContext).bottom;
+    final available = math.max(0.0, keyboardTop - anchorBottom - 8);
+    final query = _bankSearch.text.trim().toLowerCase();
+    final options = Bank.withSaved([
+      ...widget.cards.map((card) => card.bank),
+      _bank,
+    ]);
+    final matches = options
+        .where((bank) => bank.label.toLowerCase().contains(query))
+        .toList();
+    final canAdd =
+        query.isNotEmpty &&
+        !options.any((bank) => bank.label.toLowerCase() == query);
+    final listHeight = math.min(
+      available,
+      math.max(56.0, (matches.length + (canAdd ? 1 : 0)) * 56.0),
+    );
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _closeBankPicker,
+          ),
+        ),
+        CompositedTransformFollower(
+          link: _bankLayer,
+          showWhenUnlinked: false,
+          child: Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: anchorWidth,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: anchorHeight,
+                    child: TextField(
+                      controller: _bankSearch,
+                      focusNode: _bankFocus,
+                      maxLength: 60,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Название банка',
+                        counterText: '',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: IconButton(
+                          tooltip: 'Закрыть выбор банка',
+                          icon: const Icon(Icons.close),
+                          onPressed: _closeBankPicker,
+                        ),
+                        filled: true,
+                        fillColor: Theme.of(context).scaffoldBackgroundColor,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(32),
+                        ),
+                      ),
+                      onChanged: (_) => _bankOverlay?.markNeedsBuild(),
+                      onSubmitted: (_) {
+                        final exact = options
+                            .where((bank) => bank.label.toLowerCase() == query)
+                            .firstOrNull;
+                        if (exact != null) {
+                          _chooseBank(exact);
+                        } else if (canAdd) {
+                          _chooseBank(Bank.named(_bankSearch.text));
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  if (listHeight > 0)
+                    SizedBox(
+                      height: listHeight,
+                      child: Material(
+                        color: Theme.of(context).colorScheme.surface,
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(16),
+                        clipBehavior: Clip.antiAlias,
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: matches.length + (canAdd ? 1 : 0),
+                          itemBuilder: (context, index) => SizedBox(
+                            height: 56,
+                            child: ListTile(
+                              title: Text(
+                                index < matches.length
+                                    ? matches[index].label
+                                    : 'Добавить банк «${_bankSearch.text.trim()}»',
+                              ),
+                              leading: index < matches.length
+                                  ? null
+                                  : const Icon(Icons.add),
+                              onTap: () => _chooseBank(
+                                index < matches.length
+                                    ? matches[index]
+                                    : Bank.named(_bankSearch.text),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-            if (_useCustomBank) ...[
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _customBank,
-                enabled: widget.card == null || widget.card!.bank.isCustom,
-                maxLength: 60,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Название банка',
-                  hintText: 'Как вы хотите его видеть',
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _chooseBank(Bank bank) {
+    _closeBankPicker();
+    setState(() {
+      _bank = bank;
+      if (bank == Bank.sber) {
+        _reward = RewardType.sberSpasibo;
+      } else if (_reward == RewardType.sberSpasibo) {
+        _reward = RewardType.rubles;
+      }
+    });
+  }
+
+  void _closeBankPicker() {
+    if (!_bankPickerOpen) return;
+    _bankOverlay?.remove();
+    _bankOverlay?.dispose();
+    _bankOverlay = null;
+    _bankFocus.unfocus();
+    if (mounted) setState(() => _bankPickerOpen = false);
+  }
+
+  String _resolvedName() {
+    if (_nameMode == _CardNameMode.custom) return _customName.text.trim();
+    final base = switch (_nameMode) {
+      _CardNameMode.automatic => 'Карта',
+      _CardNameMode.debit => 'Дебетовая',
+      _CardNameMode.credit => 'Кредитная',
+      _CardNameMode.custom => throw StateError('Неизвестный тип названия'),
+    };
+    final current = widget.card;
+    if (current != null &&
+        current.bank == _bank &&
+        _modeFor(current.name) == _nameMode) {
+      return current.name;
+    }
+    final used = widget.cards
+        .where((card) => card.bank == _bank && card.id != current?.id)
+        .map((card) => card.name.toLowerCase())
+        .toSet();
+    if (_nameMode != _CardNameMode.automatic &&
+        !used.contains(base.toLowerCase())) {
+      return base;
+    }
+    for (
+      var index = _nameMode == _CardNameMode.automatic ? 1 : 2;
+      index < 10000;
+      index++
+    ) {
+      final name = '$base $index';
+      if (!used.contains(name.toLowerCase())) return name;
+    }
+    throw StateError('Не удалось создать название карты');
+  }
+
+  void _save() {
+    if (!_form.currentState!.validate()) return;
+    Navigator.pop(context, (
+      bank: _bank,
+      name: _resolvedName(),
+      rewardType: _reward,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_bankPickerOpen,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop && _bankPickerOpen) _closeBankPicker();
+    },
+    child: Scaffold(
+      resizeToAvoidBottomInset: !_bankPickerOpen,
+      appBar: AppBar(
+        title: Text(widget.card == null ? 'Добавить карту' : 'Изменить карту'),
+      ),
+      body: SafeArea(
+        child: Form(
+          key: _form,
+          child: PageBody(
+            children: [
+              const Text(
+                'Выберите банк. Название карты можно не указывать, если она у вас одна.',
+              ),
+              const SizedBox(height: 20),
+              CompositedTransformTarget(
+                link: _bankLayer,
+                child: OutlinedButton.icon(
+                  key: _bankAnchorKey,
+                  onPressed: _openBankPicker,
+                  style: OutlinedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                  ),
+                  icon: const Icon(Icons.account_balance_outlined),
+                  label: Text(_bank.label, overflow: TextOverflow.ellipsis),
                 ),
-                validator: (value) {
-                  try {
-                    Bank.named(value ?? '');
-                    return null;
-                  } catch (_) {
-                    return 'Введите название банка до 60 символов';
-                  }
+              ),
+              const SizedBox(height: 20),
+              DropdownButtonFormField<_CardNameMode>(
+                key: ValueKey(_nameMode),
+                initialValue: _nameMode,
+                decoration: const InputDecoration(
+                  labelText: 'Название карты (необязательно)',
+                ),
+                items: [
+                  for (final mode in _CardNameMode.values)
+                    DropdownMenuItem(value: mode, child: Text(mode.label)),
+                ],
+                onChanged: (mode) {
+                  if (mode != null) setState(() => _nameMode = mode);
                 },
               ),
-            ],
-            TextFormField(
-              controller: _name,
-              autofocus: true,
-              maxLength: 60,
-              decoration: InputDecoration(
-                labelText:
-                    widget.cards.any(
+              if (_nameMode == _CardNameMode.custom) ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _customName,
+                  maxLength: 60,
+                  decoration: const InputDecoration(
+                    labelText: 'Своё название',
+                    hintText: 'Например, карта для покупок',
+                  ),
+                  validator: (value) {
+                    final name = value?.trim() ?? '';
+                    if (name.isEmpty) return 'Введите название карты';
+                    if (widget.cards.any(
                       (card) =>
-                          card.bank ==
-                              (widget.card?.bank ??
-                                  (_useCustomBank ? null : _bank)) &&
-                          card.id != widget.card?.id,
-                    )
-                    ? 'Как отличать эту карту?'
-                    : 'Название карты',
-                hintText: 'Например, дебетовая или кредитная',
-              ),
-              validator: (value) {
-                final name = value?.trim() ?? '';
-                if (name.isEmpty) return 'Введите название';
-                Bank bank;
-                try {
-                  bank = _effectiveBank;
-                } catch (_) {
-                  return null;
-                }
-                if (widget.cards.any(
-                  (card) =>
-                      card.bank == bank &&
-                      card.id != widget.card?.id &&
-                      card.name.toLowerCase() == name.toLowerCase(),
-                )) {
-                  return 'У этого банка уже есть карта с таким названием';
-                }
-                return null;
-              },
-            ),
-            DropdownButtonFormField<RewardType>(
-              key: ValueKey(_reward),
-              initialValue: _reward,
-              decoration: const InputDecoration(labelText: 'Вознаграждение'),
-              items: [
-                for (final type in RewardType.values)
-                  DropdownMenuItem(value: type, child: Text(type.label)),
+                          card.bank == _bank &&
+                          card.id != widget.card?.id &&
+                          card.name.toLowerCase() == name.toLowerCase(),
+                    )) {
+                      return 'У этого банка уже есть карта с таким названием';
+                    }
+                    return null;
+                  },
+                ),
               ],
-              onChanged: widget.card == null
-                  ? (value) => setState(() => _reward = value!)
-                  : null,
-            ),
-          ],
+              const SizedBox(height: 16),
+              DropdownButtonFormField<RewardType>(
+                key: ValueKey(_reward),
+                initialValue: _reward,
+                decoration: const InputDecoration(labelText: 'Вознаграждение'),
+                items: [
+                  for (final type in RewardType.values)
+                    DropdownMenuItem(value: type, child: Text(type.label)),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => _reward = value);
+                },
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: _save,
+                child: Text(widget.card == null ? 'Добавить' : 'Сохранить'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Отмена'),
+              ),
+              if (_bankPickerOpen)
+                SizedBox(height: MediaQuery.sizeOf(context).height),
+            ],
+          ),
         ),
       ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Отмена'),
-      ),
-      FilledButton(
-        onPressed: () {
-          if (_form.currentState!.validate()) {
-            Navigator.pop(context, (
-              bank: _effectiveBank,
-              name: _name.text.trim(),
-              rewardType: _reward,
-            ));
-          }
-        },
-        child: const Text('Сохранить'),
-      ),
-    ],
   );
 }
 
